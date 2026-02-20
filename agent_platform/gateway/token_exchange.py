@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -27,7 +28,7 @@ class ScopedToken:
 
     @property
     def is_expired(self) -> bool:
-        return time.time() > self.expires_at if self.expires_at > 0 else False
+        return time.time() > self.expires_at
 
 
 class TokenExchangeService:
@@ -40,6 +41,7 @@ class TokenExchangeService:
     def __init__(self, default_ttl_seconds: int = 300) -> None:
         self._default_ttl = default_ttl_seconds
         self._active_tokens: dict[str, ScopedToken] = {}
+        self._lock = threading.RLock()
 
     def exchange(
         self,
@@ -69,7 +71,8 @@ class TokenExchangeService:
             },
         )
 
-        self._active_tokens[token.token_id] = token
+        with self._lock:
+            self._active_tokens[token.token_id] = token
         log.info(
             "token_exchanged",
             token_id=token.token_id,
@@ -82,29 +85,33 @@ class TokenExchangeService:
 
     def validate(self, token_id: str) -> ScopedToken | None:
         """Validate a scoped token. Returns None if invalid or expired."""
-        token = self._active_tokens.get(token_id)
-        if token is None:
-            return None
-        if token.is_expired:
-            self.revoke(token_id)
-            return None
-        return token
+        with self._lock:
+            token = self._active_tokens.get(token_id)
+            if token is None:
+                return None
+            if token.is_expired:
+                del self._active_tokens[token_id]
+                log.info("token_expired", token_id=token_id)
+                return None
+            return token
 
     def revoke(self, token_id: str) -> bool:
         """Revoke a scoped token."""
-        if token_id in self._active_tokens:
-            del self._active_tokens[token_id]
-            log.info("token_revoked", token_id=token_id)
-            return True
-        return False
+        with self._lock:
+            if token_id in self._active_tokens:
+                del self._active_tokens[token_id]
+                log.info("token_revoked", token_id=token_id)
+                return True
+            return False
 
     def revoke_all_for_agent(self, agent_id: str) -> int:
         """Revoke all tokens for an agent. Returns count revoked."""
-        to_revoke = [
-            tid for tid, t in self._active_tokens.items() if t.agent_id == agent_id
-        ]
-        for tid in to_revoke:
-            del self._active_tokens[tid]
+        with self._lock:
+            to_revoke = [
+                tid for tid, t in self._active_tokens.items() if t.agent_id == agent_id
+            ]
+            for tid in to_revoke:
+                del self._active_tokens[tid]
         if to_revoke:
             log.info("tokens_revoked_for_agent", agent_id=agent_id, count=len(to_revoke))
         return len(to_revoke)
@@ -112,11 +119,12 @@ class TokenExchangeService:
     def cleanup_expired(self) -> int:
         """Remove expired tokens. Returns count cleaned."""
         now = time.time()
-        expired = [
-            tid
-            for tid, t in self._active_tokens.items()
-            if t.expires_at > 0 and now > t.expires_at
-        ]
-        for tid in expired:
-            del self._active_tokens[tid]
+        with self._lock:
+            expired = [
+                tid
+                for tid, t in self._active_tokens.items()
+                if now > t.expires_at
+            ]
+            for tid in expired:
+                del self._active_tokens[tid]
         return len(expired)

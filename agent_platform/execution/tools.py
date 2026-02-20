@@ -64,12 +64,31 @@ class ToolRegistry:
 
 
 class HTTPTool(BaseTool):
-    """HTTP request tool."""
+    """HTTP request tool with SSRF protection."""
+
+    _ALLOWED_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
+    _DEFAULT_TIMEOUT = 30
 
     def execute(self, url: str = "", method: str = "GET", **kwargs: Any) -> Any:
         import httpx
+        from agent_platform.shared.validation import validate_url, ValidationError
 
-        with httpx.Client() as client:
+        # Validate URL against SSRF
+        try:
+            validate_url(url, field="url")
+        except ValidationError as e:
+            raise ValueError(f"URL validation failed: {e.message}")
+
+        # Restrict methods
+        method = method.upper()
+        if method not in self._ALLOWED_METHODS:
+            raise ValueError(f"HTTP method '{method}' not allowed")
+
+        # Remove dangerous kwargs
+        kwargs.pop("follow_redirects", None)
+        kwargs.pop("auth", None)
+
+        with httpx.Client(timeout=self._DEFAULT_TIMEOUT) as client:
             resp = client.request(method, url, **kwargs)
             return {
                 "status_code": resp.status_code,
@@ -80,7 +99,7 @@ class HTTPTool(BaseTool):
     def schema(self) -> ToolSchema:
         return ToolSchema(
             name="http",
-            description="Make HTTP requests",
+            description="Make HTTP requests (SSRF-protected)",
             parameters={
                 "url": {"type": "string", "required": True},
                 "method": {"type": "string", "default": "GET"},

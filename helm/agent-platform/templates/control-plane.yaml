@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-control-plane
+  labels:
+    app: agent-platform-control-plane
+spec:
+  replicas: {{ .Values.controlPlane.replicaCount }}
+  selector:
+    matchLabels:
+      app: agent-platform-control-plane
+  template:
+    metadata:
+      labels:
+        app: agent-platform-control-plane
+    spec:
+      containers:
+        - name: control-plane
+          image: "{{ .Values.controlPlane.image.repository }}:{{ .Values.controlPlane.image.tag }}"
+          imagePullPolicy: {{ .Values.controlPlane.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.controlPlane.port }}
+              protocol: TCP
+          env:
+            - name: DATABASE_URL
+              value: "postgresql://{{ .Values.postgresql.auth.username }}:{{ .Values.postgresql.auth.password }}@{{ .Release.Name }}-postgresql:5432/{{ .Values.postgresql.auth.database }}"
+            - name: OPA_URL
+              value: "http://{{ .Release.Name }}-opa:{{ .Values.opa.port }}"
+            {{- if .Values.controlPlane.apiKey }}
+            - name: AP_API_KEY
+              value: {{ .Values.controlPlane.apiKey | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.controlPlane.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-control-plane
+spec:
+  selector:
+    app: agent-platform-control-plane
+  ports:
+    - port: {{ .Values.controlPlane.port }}
+      targetPort: {{ .Values.controlPlane.port }}
+      protocol: TCP

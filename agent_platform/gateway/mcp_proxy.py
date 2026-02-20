@@ -8,6 +8,7 @@ from typing import Any, Callable
 
 from agent_platform.shared.logging import get_logger
 from agent_platform.shared.models import AuditEntry, PolicyDecision, _new_id
+from agent_platform.shared.validation import ValidationError
 
 log = get_logger()
 
@@ -41,16 +42,23 @@ class MCPAuthorizationProxy:
         budget_checker: Callable[[str, str, int], tuple[bool, int, str]],
         usage_reporter: Callable[..., int],
         audit_logger: Callable[[AuditEntry], None] | None = None,
+        default_estimated_tokens: int = 1000,
+        tool_timeout_seconds: int = 300,
     ) -> None:
         self._check_policy = policy_checker
         self._check_budget = budget_checker
         self._report_usage = usage_reporter
         self._log_audit = audit_logger or self._default_audit
         self._tool_registry: dict[str, Callable] = {}
+        self._tool_schemas: dict[str, dict[str, Any]] = {}
+        self._default_estimated_tokens = default_estimated_tokens
+        self._tool_timeout = tool_timeout_seconds
 
-    def register_tool(self, name: str, handler: Callable) -> None:
+    def register_tool(self, name: str, handler: Callable, schema: dict[str, Any] | None = None) -> None:
         """Register an MCP tool handler."""
         self._tool_registry[name] = handler
+        if schema:
+            self._tool_schemas[name] = schema
         log.info("tool_registered", tool_name=name)
 
     def execute(self, request: ToolCallRequest) -> ToolCallResult:
@@ -58,8 +66,9 @@ class MCPAuthorizationProxy:
         start = time.monotonic()
 
         # 1. Policy check
+        estimated = self._default_estimated_tokens
         policy_decision = self._check_policy(
-            request.org_id, request.agent_id, request.tool_name, 0
+            request.org_id, request.agent_id, request.tool_name, estimated
         )
         if not policy_decision.allowed:
             audit = self._create_audit(request, "denied", policy_decision.reason, 0, 0)
@@ -72,7 +81,7 @@ class MCPAuthorizationProxy:
 
         # 2. Budget pre-flight
         budget_ok, remaining, budget_reason = self._check_budget(
-            request.org_id, request.agent_id, 0
+            request.org_id, request.agent_id, estimated
         )
         if not budget_ok:
             audit = self._create_audit(request, "denied", budget_reason, 0, 0)
@@ -95,6 +104,22 @@ class MCPAuthorizationProxy:
                 error=f"tool '{request.tool_name}' not registered",
                 audit_entry=audit,
             )
+
+        # Validate parameters against schema if available
+        schema = self._tool_schemas.get(request.tool_name)
+        if schema:
+            allowed_params = set(schema.keys())
+            unknown_params = set(request.parameters.keys()) - allowed_params
+            if unknown_params:
+                audit = self._create_audit(
+                    request, "denied", f"unknown parameters: {unknown_params}", 0, 0
+                )
+                self._log_audit(audit)
+                return ToolCallResult(
+                    success=False,
+                    error=f"unknown parameters: {unknown_params}",
+                    audit_entry=audit,
+                )
 
         try:
             result = handler(**request.parameters)

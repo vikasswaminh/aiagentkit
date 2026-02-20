@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 from concurrent import futures
+from typing import Any
 
 import grpc
 from google.protobuf import struct_pb2, timestamp_pb2
 
-from agent_platform.control_plane.agents import AgentService
-from agent_platform.control_plane.billing import BillingService
-from agent_platform.control_plane.policy import PolicyService
 from agent_platform.execution.llm import BaseLLM, MockLLM
 from agent_platform.execution.runtime import ExecutionRuntime
 from agent_platform.execution.tools import ToolRegistry
@@ -68,9 +66,9 @@ class ExecutionServicer(pb2_grpc.ExecutionServiceServicer):
 
 
 def create_execution_server(
-    agent_service: AgentService,
-    policy_service: PolicyService,
-    billing_service: BillingService,
+    agent_service: Any = None,
+    policy_service: Any = None,
+    billing_service: Any = None,
     llm: BaseLLM | None = None,
     tool_registry: ToolRegistry | None = None,
     port: int = 50052,

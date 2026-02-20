@@ -5,6 +5,7 @@ from __future__ import annotations
 from agent_platform.shared.logging import get_logger
 from agent_platform.shared.models import Organization
 from agent_platform.shared.store import InMemoryStore, Store
+from agent_platform.shared.validation import validate_name, ValidationError
 
 log = get_logger()
 
@@ -16,6 +17,7 @@ class OrgService:
         self._store: Store[Organization] = store or InMemoryStore()
 
     def create(self, name: str, metadata: dict | None = None) -> Organization:
+        name = validate_name(name, field="org_name")
         org = Organization(name=name, metadata=metadata or {})
         self._store.put(org.org_id, org)
         log.info("org_created", org_id=org.org_id, name=name)

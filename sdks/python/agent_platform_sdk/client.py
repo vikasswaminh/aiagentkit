@@ -6,10 +6,6 @@ from typing import Any
 
 import grpc
 
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
-
 from agent_platform.proto import agent_platform_pb2 as pb2
 from agent_platform.proto import agent_platform_pb2_grpc as pb2_grpc
 from agent_platform_sdk.orgs import OrgClient

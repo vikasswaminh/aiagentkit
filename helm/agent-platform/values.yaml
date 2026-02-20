@@ -1,0 +1,45 @@
+controlPlane:
+  replicaCount: 1
+  image:
+    repository: agent-platform/control-plane
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  port: 50051
+  apiKey: ""  # Set via --set controlPlane.apiKey=<key> or use existingSecret
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+worker:
+  replicaCount: 2
+  image:
+    repository: agent-platform/worker
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  port: 50052
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+
+opa:
+  enabled: true
+  image:
+    repository: openpolicyagent/opa
+    tag: latest
+  port: 8181
+
+postgresql:
+  enabled: true
+  auth:
+    database: agent_platform
+    username: agent_platform
+    # Override in production: --set postgresql.auth.password=<secret>
+    password: changeme

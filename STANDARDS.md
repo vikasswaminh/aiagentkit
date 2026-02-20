@@ -29,7 +29,7 @@ The NIST concept paper identifies four core requirements for AI agent governance
 |---|---|
 | Identity proofing | Agent registration requires org membership verification |
 | Authentication | Agent identity validated on every gRPC call via token claims |
-| Federation | Auth0/Okta integration for enterprise IdP federation |
+| Federation | Auth0/Okta integration planned; adapter interface defined |
 
 ## OAuth 2.1 Alignment
 
@@ -54,7 +54,7 @@ The NIST concept paper identifies four core requirements for AI agent governance
 
 | Spec Requirement | Implementation |
 |---|---|
-| OAuth 2.1 with PKCE | Supported via Auth0 integration |
+| OAuth 2.1 with PKCE | Planned (Auth0/Okta adapter interface defined, not yet wired) |
 | Incremental scope negotiation | Token exchange produces narrowed scopes per tool |
 | Human-in-the-loop for high-risk actions | Extensible via policy engine (configurable per-tool risk levels) |
 
@@ -80,8 +80,9 @@ The NIST concept paper identifies four core requirements for AI agent governance
 | Capability | Standard | Status |
 |---|---|---|
 | Agent identity issuance | OAuth 2.1 / RFC 7591 | Implemented |
-| Token exchange (broad → narrow) | RFC 8693 | Implemented |
-| Policy evaluation | OPA / Rego | Implemented |
+| Token exchange (broad → narrow) | RFC 8693 | Implemented (in-process; Auth0 integration pending) |
+| Policy evaluation (local) | Custom ABAC | Implemented |
+| Policy evaluation (OPA) | OPA / Rego | Implemented (Rego generation + REST eval with local fallback) |
 | Tool-level ABAC | NIST SP 800-162 | Implemented |
 | Hierarchical policy merge | Custom (org < agent) | Implemented |
 | Token budget enforcement | Custom | Implemented |
@@ -89,10 +90,10 @@ The NIST concept paper identifies four core requirements for AI agent governance
 | Delegation chain tracking | W3C PROV-aligned | Implemented |
 | Append-only audit log | NIST SP 800-92 aligned | Implemented |
 | MCP tool call interception | MCP Authorization Spec | Implemented |
-| Structured logging | OpenTelemetry-compatible | Implemented |
+| Structured logging | structlog JSON | Implemented |
 | Multi-tenant org isolation | SCIM-aligned | Implemented |
 | gRPC API contracts | Protobuf v3 | Implemented |
-| Auth0/Okta IdP integration | OIDC / OAuth 2.1 | Adapter ready |
+| Auth0/Okta IdP integration | OIDC / OAuth 2.1 | Planned (adapter interface defined) |
 | Cross App Access (XAA) | Okta XAA (2026) | Planned |
 | EU AI Act compliance reports | EU AI Act Article 14 | Planned |
 | NIST AI Agent Standards Initiative alignment | NIST CAISI | Aligned |

@@ -97,11 +97,16 @@ class BillingService:
                         f"org budget exhausted: {org_budget.tokens_remaining} remaining, {estimated_tokens} requested",
                     )
 
-            remaining = min(
-                agent_budget.tokens_remaining if agent_budget else float("inf"),
-                org_budget.tokens_remaining if org_budget else float("inf"),
-            )
-            return (True, int(remaining), "budget_ok")
+            # Compute remaining without float("inf") to avoid OverflowError
+            if agent_budget and org_budget:
+                remaining = min(agent_budget.tokens_remaining, org_budget.tokens_remaining)
+            elif agent_budget:
+                remaining = agent_budget.tokens_remaining
+            elif org_budget:
+                remaining = org_budget.tokens_remaining
+            else:
+                remaining = 0
+            return (True, remaining, "budget_ok")
 
     # --- Post-flight Deduction ---
 
@@ -125,9 +130,9 @@ class BillingService:
             execution_duration_ms=execution_duration_ms,
             tool_name=tool_name,
         )
-        self._usage.put(report.report_id, report)
 
         with self._lock:
+            self._usage.put(report.report_id, report)
             # Deduct from agent budget
             agent_budget = self._budgets.get(_budget_key(org_id, agent_id))
             if agent_budget:
@@ -142,7 +147,17 @@ class BillingService:
                 org_budget.tool_invocations += tool_invocations
                 self._budgets.put(_budget_key(org_id), org_budget)
 
-            remaining = agent_budget.tokens_remaining if agent_budget else 0
+            # Return min of agent + org remaining
+            agent_rem = agent_budget.tokens_remaining if agent_budget else None
+            org_rem = org_budget.tokens_remaining if org_budget else None
+            if agent_rem is not None and org_rem is not None:
+                remaining = min(agent_rem, org_rem)
+            elif agent_rem is not None:
+                remaining = agent_rem
+            elif org_rem is not None:
+                remaining = org_rem
+            else:
+                remaining = 0
 
         log.info(
             "usage_reported",

@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          pip install -e ".[dev]"
+          pip install ruff coverage
+
+      - name: Lint
+        run: |
+          ruff check agent_platform/ tests/
+
+      - name: Type check
+        run: |
+          python -m mypy agent_platform/ --ignore-missing-imports
+
+      - name: Run tests with coverage
+        run: |
+          coverage run -m pytest tests/ -v --tb=short
+          coverage report --show-missing
+          coverage xml
+
+      - name: Upload coverage
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install bandit
+
+      - name: Security scan
+        run: |
+          bandit -r agent_platform/ -ll -ii

@@ -7,6 +7,7 @@ from typing import Any
 from agent_platform.shared.logging import get_logger
 from agent_platform.shared.models import AgentIdentity, AgentRole
 from agent_platform.shared.store import InMemoryStore, Store
+from agent_platform.shared.validation import validate_name, validate_role, ValidationError
 
 log = get_logger()
 
@@ -29,7 +30,9 @@ class AgentService:
         delegated_user_id: str | None = None,
         token_claims: dict[str, Any] | None = None,
     ) -> AgentIdentity:
+        name = validate_name(name, field="agent_name")
         if isinstance(role, str):
+            validate_role(role)
             role = AgentRole(role)
 
         agent = AgentIdentity(

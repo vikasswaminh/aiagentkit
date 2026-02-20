@@ -8,6 +8,23 @@ authors = [
     {name = "Agent Platform Team"}
 ]
 
+keywords = ["ai", "agents", "iam", "governance", "policy", "mcp", "opa"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: Software Development :: Libraries",
+]
+
+[project.urls]
+Homepage = "https://github.com/agent-platform/agent-platform-sdk"
+Documentation = "https://github.com/agent-platform/agent-platform-sdk#readme"
+Issues = "https://github.com/agent-platform/agent-platform-sdk/issues"
+
 dependencies = [
     "grpcio>=1.60.0",
     "grpcio-tools>=1.60.0",
@@ -17,11 +34,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+claude = ["anthropic>=0.40.0"]
+openai = ["openai>=1.50.0"]
+postgres = ["psycopg[binary]>=3.1.0", "psycopg_pool>=3.1.0"]
 auth0 = ["auth0-python>=4.0.0"]
+all = ["anthropic>=0.40.0", "openai>=1.50.0", "psycopg[binary]>=3.1.0", "psycopg_pool>=3.1.0"]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "grpcio-testing>=1.60.0",
+    "mypy>=1.10.0",
 ]
 
 [build-system]

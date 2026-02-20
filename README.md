@@ -42,9 +42,9 @@ The control plane manages state. Execution workers are stateless. All communicat
 
 | Language | Path | Status |
 |----------|------|--------|
-| Python | `sdks/python/` | Production |
-| Rust | `sdks/rust/` | Production |
-| Go | `sdks/go/` | Production |
+| Python | `sdks/python/` | Alpha |
+| Rust | `sdks/rust/` | Scaffold |
+| Go | `sdks/go/` | Scaffold |
 
 All SDKs share the same protobuf contract (`proto/agent_platform.proto`) and expose identical functionality.
 
@@ -92,7 +92,7 @@ decision, _ := client.EvaluatePolicy(ctx, org.OrgID, agent.AgentID, "search", 0)
 
 ```bash
 # Start the control plane
-python -m platform.main_control
+python -m agent_platform.main_control
 
 # Use the CLI
 python cli/agentctl.py orgs create "acme-corp"
@@ -128,7 +128,7 @@ See [STANDARDS.md](STANDARDS.md) for detailed mapping to NIST, OAuth 2.1, MCP, a
 agent-platform-sdk/
 ├── proto/                          # Shared protobuf contract
 │   └── agent_platform.proto
-├── platform/                       # Control plane + execution runtime (Python)
+├── agent_platform/                  # Control plane + execution runtime (Python)
 │   ├── control_plane/
 │   │   ├── orgs.py                # Organization CRUD
 │   │   ├── agents.py              # Agent registration + identity
@@ -147,6 +147,7 @@ agent-platform-sdk/
 │   │   └── audit.py               # Append-only audit log
 │   └── shared/
 │       ├── models.py              # Core data models
+│       ├── validation.py          # Input validation + SSRF protection
 │       ├── logging.py             # Structured JSON logging
 │       └── store.py               # Store interface + in-memory impl
 ├── sdks/

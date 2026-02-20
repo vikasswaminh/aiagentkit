@@ -95,10 +95,8 @@ class ExecutionRuntime:
         execution_id: str,
         start: float,
     ) -> ExecutionResponse:
-        # 1. Validate agent
+        # 1. Validate agent (org-scoped only — no cross-org fallback)
         agent = self._agents.get(request.org_id, request.agent_id)
-        if agent is None:
-            agent = self._agents.get_by_id(request.agent_id)
         if agent is None or not agent.active:
             return ExecutionResponse(
                 execution_id=execution_id,
@@ -174,13 +172,15 @@ class ExecutionRuntime:
         )
 
         # 7. Log execution audit
+        any_tool_failed = any(not tc["success"] for tc in tool_call_results)
+        audit_result = "partial_failure" if any_tool_failed else "success"
         self._audit.append(AuditEntry(
             org_id=request.org_id,
             agent_id=request.agent_id,
             delegated_user_id=agent.delegated_user_id,
             execution_id=execution_id,
             action="execution_complete",
-            result="success",
+            result=audit_result,
             latency_ms=duration,
             tokens_used=total_tokens,
         ))

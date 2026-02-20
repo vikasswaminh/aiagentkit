@@ -6,11 +6,20 @@ import json
 import sys
 
 import click
+import grpc
 
 sys.path.insert(0, '.')
-sys.path.insert(0, './sdk')
+sys.path.insert(0, './sdks/python')
 
 from agent_platform_sdk.client import AgentPlatformClient
+
+
+def _handle_rpc_error(e: grpc.RpcError) -> None:
+    """Print a user-friendly error for gRPC failures."""
+    code = e.code() if hasattr(e, 'code') else 'UNKNOWN'
+    details = e.details() if hasattr(e, 'details') else str(e)
+    click.echo(f"Error [{code}]: {details}", err=True)
+    raise SystemExit(1)
 
 
 @click.group()
@@ -39,9 +48,12 @@ def orgs() -> None:
 @click.pass_context
 def orgs_create(ctx: click.Context, name: str) -> None:
     """Create an organization."""
-    with _client(ctx) as c:
-        org = c.orgs.create(name)
-        click.echo(json.dumps({"org_id": org.org_id, "name": org.name}, indent=2))
+    try:
+        with _client(ctx) as c:
+            org = c.orgs.create(name)
+            click.echo(json.dumps({"org_id": org.org_id, "name": org.name}, indent=2))
+    except grpc.RpcError as e:
+        _handle_rpc_error(e)
 
 
 @orgs.command("list")
@@ -79,15 +91,18 @@ def agents() -> None:
 @click.pass_context
 def agents_register(ctx: click.Context, org_id: str, name: str, role: str, delegated_user: str | None) -> None:
     """Register an agent under an organization."""
-    with _client(ctx) as c:
-        agent = c.agents.register(org_id, name, role=role, delegated_user_id=delegated_user)
-        click.echo(json.dumps({
-            "agent_id": agent.agent_id,
-            "org_id": agent.org_id,
-            "name": agent.name,
-            "role": agent.role,
-            "active": agent.active,
-        }, indent=2))
+    try:
+        with _client(ctx) as c:
+            agent = c.agents.register(org_id, name, role=role, delegated_user_id=delegated_user)
+            click.echo(json.dumps({
+                "agent_id": agent.agent_id,
+                "org_id": agent.org_id,
+                "name": agent.name,
+                "role": agent.role,
+                "active": agent.active,
+            }, indent=2))
+    except grpc.RpcError as e:
+        _handle_rpc_error(e)
 
 
 @agents.command("list")
@@ -150,13 +165,16 @@ def policy_set(ctx: click.Context, org_id: str, agent_id: str | None, allow: tup
 @click.pass_context
 def policy_evaluate(ctx: click.Context, org_id: str, agent_id: str, tool_name: str, tokens: int) -> None:
     """Evaluate whether an agent can use a tool."""
-    with _client(ctx) as c:
-        decision = c.policy.evaluate(org_id, agent_id, tool_name, tokens)
-        click.echo(json.dumps({
-            "allowed": decision.allowed,
-            "reason": decision.reason,
-            "policy_id": decision.policy_id,
-        }, indent=2))
+    try:
+        with _client(ctx) as c:
+            decision = c.policy.evaluate(org_id, agent_id, tool_name, tokens)
+            click.echo(json.dumps({
+                "allowed": decision.allowed,
+                "reason": decision.reason,
+                "policy_id": decision.policy_id,
+            }, indent=2))
+    except grpc.RpcError as e:
+        _handle_rpc_error(e)
 
 
 # --- Budget ---

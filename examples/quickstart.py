@@ -1,30 +1,26 @@
 """Quickstart — demonstrates the full Agent Platform governance pipeline.
 
-Run the control plane first:
-    python -m platform.main_control
+Install the package first:
+    pip install -e .
 
 Then run this script:
     python examples/quickstart.py
 """
 
-import sys
-sys.path.insert(0, '.')
-sys.path.insert(0, './platform')
-
-from platform.control_plane.orgs import OrgService
-from platform.control_plane.agents import AgentService
-from platform.control_plane.policy import PolicyService
-from platform.control_plane.billing import BillingService
-from platform.execution.runtime import ExecutionRuntime
-from platform.execution.llm import MockLLM
-from platform.execution.tools import ToolRegistry, MockTool
-from platform.shared.models import (
+from agent_platform.control_plane.orgs import OrgService
+from agent_platform.control_plane.agents import AgentService
+from agent_platform.control_plane.policy import PolicyService
+from agent_platform.control_plane.billing import BillingService
+from agent_platform.execution.runtime import ExecutionRuntime
+from agent_platform.execution.llm import MockLLM
+from agent_platform.execution.tools import ToolRegistry, MockTool
+from agent_platform.shared.models import (
     ExecutionRequest,
     PolicyEffect,
     ToolPermission,
     UsageQuery,
 )
-from platform.shared.logging import configure_logging
+from agent_platform.shared.logging import configure_logging
 
 configure_logging()
 
