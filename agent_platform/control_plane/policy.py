@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import threading
+import json
 from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Any
@@ -13,6 +13,7 @@ from agent_platform.shared.models import (
     PolicyDecision,
     PolicyEffect,
     ToolPermission,
+    _new_id,
 )
 from agent_platform.shared.store import InMemoryStore, Store
 
@@ -35,7 +36,6 @@ class PolicyService:
     ) -> None:
         self._store: Store[Policy] = store or InMemoryStore()
         self._opa = opa_adapter
-        self._lock = threading.RLock()
 
     def set_policy(
         self,
@@ -46,34 +46,22 @@ class PolicyService:
         execution_timeout_seconds: int = 300,
     ) -> Policy:
         key = _policy_key(org_id, agent_id)
-        with self._lock:
-            existing = self._store.get(key)
+        existing = self._store.get(key)
 
-            policy = Policy(
-                policy_id=existing.policy_id if existing else Policy().policy_id,
-                org_id=org_id,
-                agent_id=agent_id,
-                tools=tools or [],
-                token_limit=token_limit,
-                execution_timeout_seconds=execution_timeout_seconds,
-            )
-            if existing:
-                policy = replace(policy, updated_at=datetime.now(timezone.utc))
+        policy = Policy(
+            policy_id=existing.policy_id if existing else _new_id(),
+            org_id=org_id,
+            agent_id=agent_id,
+            tools=tools or [],
+            token_limit=token_limit,
+            execution_timeout_seconds=execution_timeout_seconds,
+        )
+        if existing:
+            policy = replace(policy, updated_at=datetime.now(timezone.utc))
 
-            self._store.put(key, policy)
+        self._store.put(key, policy)
         scope = f"agent:{agent_id}" if agent_id else "org"
         log.info("policy_set", org_id=org_id, scope=scope, policy_id=policy.policy_id)
-
-        # Auto-push to OPA if adapter is configured
-        if self._opa is not None:
-            try:
-                rego = self._opa.policy_to_rego(policy)
-                policy_name = f"agent_platform/policy/{org_id.replace('-', '_')}"
-                self._opa.push_policy(policy_name, rego)
-                log.info("opa_policy_pushed", policy_name=policy_name)
-            except Exception as e:
-                log.warning("opa_push_failed", error=str(e))
-
         return policy
 
     def get_policy(self, org_id: str, agent_id: str | None = None) -> Policy | None:
@@ -96,11 +84,7 @@ class PolicyService:
         estimated_tokens: int = 0,
         context: dict[str, Any] | None = None,
     ) -> PolicyDecision:
-        """Evaluate whether an action is allowed by policy.
-
-        If an OPA adapter is configured, delegates to OPA for evaluation.
-        Otherwise uses the local policy engine.
-        """
+        """Evaluate whether an action is allowed by policy."""
         policy = self.get_effective_policy(org_id, agent_id)
 
         if policy is None:
@@ -109,24 +93,6 @@ class PolicyService:
                 reason="no policy found for org/agent",
             )
 
-        # If OPA is configured, try OPA evaluation first
-        if self._opa is not None:
-            try:
-                opa_input = {
-                    "org_id": org_id,
-                    "agent_id": agent_id,
-                    "tool_name": tool_name,
-                    "estimated_tokens": estimated_tokens,
-                    **(context or {}),
-                }
-                policy_name = f"agent_platform.policy.{org_id.replace('-', '_')}"
-                decision = self._opa.evaluate(policy_name, opa_input)
-                log.info("opa_evaluation", org_id=org_id, agent_id=agent_id, allowed=decision.allowed)
-                return decision
-            except Exception as e:
-                log.warning("opa_fallback", error=str(e), reason="falling back to local policy engine")
-
-        # Local policy evaluation
         # Check token limit
         if estimated_tokens > policy.token_limit:
             return PolicyDecision(
@@ -136,8 +102,7 @@ class PolicyService:
             )
 
         # Check tool permissions
-        decision = self._evaluate_tool_permission(policy, tool_name)
-        return decision
+        return self._evaluate_tool_permission(policy, tool_name)
 
     def _evaluate_tool_permission(
         self, policy: Policy, tool_name: str
@@ -179,14 +144,12 @@ class PolicyService:
 
     def _merge_policies(self, org: Policy, agent: Policy) -> Policy:
         """Merge org and agent policies. Agent overrides org, but org deny wins."""
-        # Combine tool permissions — org deny overrides agent allow
         org_denied = {
             p.tool_name for p in org.tools if p.effect == PolicyEffect.DENY
         }
         merged_tools = list(org.tools)
         for perm in agent.tools:
             if perm.tool_name not in org_denied:
-                # Remove org-level permission for this tool, replace with agent-level
                 merged_tools = [
                     t for t in merged_tools if t.tool_name != perm.tool_name
                 ]
@@ -197,7 +160,6 @@ class PolicyService:
             org_id=org.org_id,
             agent_id=agent.agent_id,
             tools=merged_tools,
-            # Agent can't exceed org limits
             token_limit=min(org.token_limit, agent.token_limit),
             execution_timeout_seconds=min(
                 org.execution_timeout_seconds, agent.execution_timeout_seconds
@@ -206,13 +168,18 @@ class PolicyService:
 
 
 class OPAAdapter:
-    """Adapter to translate governance rules to OPA Rego and evaluate via REST.
-
-    All methods are synchronous — no asyncio event loop creation needed.
-    """
+    """Adapter to translate governance rules to OPA Rego and evaluate via REST."""
 
     def __init__(self, opa_url: str = "http://localhost:8181") -> None:
         self._opa_url = opa_url
+        self._client: Any = None
+
+    def _get_client(self) -> Any:
+        """Lazily create and reuse a synchronous httpx client."""
+        if self._client is None:
+            import httpx
+            self._client = httpx.Client(timeout=10.0)
+        return self._client
 
     def policy_to_rego(self, policy: Policy) -> str:
         """Generate Rego policy from a Policy dataclass."""
@@ -234,7 +201,7 @@ class OPAAdapter:
         ]
 
         if denied_tools:
-            lines.append(f"denied_tools := {denied_tools}")
+            lines.append(f"denied_tools := {json.dumps(denied_tools)}")
             lines.append("")
             lines.append("deny if {")
             lines.append("    input.tool_name == denied_tools[_]")
@@ -247,7 +214,7 @@ class OPAAdapter:
                 lines.append("    not deny")
                 lines.append("}")
             else:
-                lines.append(f"allowed_tools := {allowed_tools}")
+                lines.append(f"allowed_tools := {json.dumps(allowed_tools)}")
                 lines.append("")
                 lines.append("allow if {")
                 lines.append("    input.tool_name == allowed_tools[_]")
@@ -262,28 +229,25 @@ class OPAAdapter:
         return "\n".join(lines)
 
     def push_policy(self, policy_name: str, rego_content: str) -> bool:
-        """Push a Rego policy to OPA via REST API (synchronous)."""
-        import httpx
-
+        """Push a Rego policy to OPA via REST API."""
+        client = self._get_client()
         url = f"{self._opa_url}/v1/policies/{policy_name}"
-        with httpx.Client(timeout=10) as client:
-            resp = client.put(
-                url,
-                content=rego_content,
-                headers={"Content-Type": "text/plain"},
-            )
-            return resp.status_code == 200
+        resp = client.put(
+            url,
+            content=rego_content,
+            headers={"Content-Type": "text/plain"},
+        )
+        return resp.status_code == 200
 
     def evaluate(
         self,
         policy_name: str,
         input_data: dict[str, Any],
     ) -> PolicyDecision:
-        """Evaluate a policy decision via OPA REST API (synchronous)."""
-        import httpx
-
+        """Evaluate a policy decision via OPA REST API."""
+        client = self._get_client()
         url = f"{self._opa_url}/v1/data/{policy_name}/allow"
-        with httpx.Client(timeout=10) as client:
+        try:
             resp = client.post(url, json={"input": input_data})
             if resp.status_code == 200:
                 result = resp.json()
@@ -292,4 +256,12 @@ class OPAAdapter:
                     allowed=allowed,
                     reason="opa_evaluation",
                 )
+        except Exception:
+            log.warning("opa_evaluation_failed", policy=policy_name)
         return PolicyDecision(allowed=False, reason="opa_unavailable")
+
+    def close(self) -> None:
+        """Close the underlying HTTP client."""
+        if self._client is not None:
+            self._client.close()
+            self._client = None

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import threading
 import time
 from dataclasses import dataclass, field
@@ -28,7 +27,7 @@ class ScopedToken:
 
     @property
     def is_expired(self) -> bool:
-        return time.time() > self.expires_at
+        return time.time() > self.expires_at if self.expires_at > 0 else False
 
 
 class TokenExchangeService:
@@ -37,6 +36,8 @@ class TokenExchangeService:
     Implements the conceptual pattern of RFC 8693 (OAuth Token Exchange).
     In production, this would integrate with Auth0's token exchange endpoint.
     """
+
+    _MAX_ACTIVE_TOKENS = 10_000
 
     def __init__(self, default_ttl_seconds: int = 300) -> None:
         self._default_ttl = default_ttl_seconds
@@ -53,7 +54,7 @@ class TokenExchangeService:
         ttl_seconds: int | None = None,
     ) -> ScopedToken:
         """Exchange a broad token for a narrow, tool-scoped token."""
-        ttl = ttl_seconds or self._default_ttl
+        ttl = ttl_seconds if ttl_seconds is not None else self._default_ttl
         now = time.time()
 
         token = ScopedToken(
@@ -72,7 +73,11 @@ class TokenExchangeService:
         )
 
         with self._lock:
+            # Evict expired tokens if approaching capacity
+            if len(self._active_tokens) >= self._MAX_ACTIVE_TOKENS:
+                self.cleanup_expired()
             self._active_tokens[token.token_id] = token
+
         log.info(
             "token_exchanged",
             token_id=token.token_id,
@@ -91,7 +96,6 @@ class TokenExchangeService:
                 return None
             if token.is_expired:
                 del self._active_tokens[token_id]
-                log.info("token_expired", token_id=token_id)
                 return None
             return token
 
@@ -123,7 +127,7 @@ class TokenExchangeService:
             expired = [
                 tid
                 for tid, t in self._active_tokens.items()
-                if now > t.expires_at
+                if t.expires_at > 0 and now > t.expires_at
             ]
             for tid in expired:
                 del self._active_tokens[tid]

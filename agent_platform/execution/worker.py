@@ -11,7 +11,7 @@ from google.protobuf import struct_pb2, timestamp_pb2
 from agent_platform.execution.llm import BaseLLM, MockLLM
 from agent_platform.execution.runtime import ExecutionRuntime
 from agent_platform.execution.tools import ToolRegistry
-from agent_platform.shared.logging import configure_logging, get_logger
+from agent_platform.shared.logging import get_logger
 from agent_platform.shared.models import ExecutionRequest
 
 from agent_platform.proto import agent_platform_pb2 as pb2
@@ -66,15 +66,18 @@ class ExecutionServicer(pb2_grpc.ExecutionServiceServicer):
 
 
 def create_execution_server(
-    agent_service: Any = None,
-    policy_service: Any = None,
-    billing_service: Any = None,
+    agent_service: Any,
+    policy_service: Any,
+    billing_service: Any,
     llm: BaseLLM | None = None,
     tool_registry: ToolRegistry | None = None,
     port: int = 50052,
     max_workers: int = 10,
 ) -> grpc.Server:
-    """Create the execution worker gRPC server."""
+    """Create the execution worker gRPC server.
+
+    Services can be local instances or remote gRPC-backed stubs (duck-typed).
+    """
     runtime = ExecutionRuntime(
         agent_service=agent_service,
         policy_service=policy_service,

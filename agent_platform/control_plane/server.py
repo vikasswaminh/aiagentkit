@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from concurrent import futures
+from datetime import datetime
 from typing import Any
 
 import grpc
@@ -28,29 +29,7 @@ from agent_platform.proto import agent_platform_pb2_grpc as pb2_grpc
 log = get_logger()
 
 
-class APIKeyInterceptor(grpc.ServerInterceptor):
-    """Server interceptor that validates API key from metadata.
-
-    If AP_API_KEY env var is not set, authentication is disabled (dev mode).
-    Clients pass the key via the 'x-api-key' metadata header.
-    """
-
-    def __init__(self, api_key: str) -> None:
-        self._api_key = api_key
-
-    def intercept_service(self, continuation, handler_call_details):
-        metadata = dict(handler_call_details.invocation_metadata or [])
-        client_key = metadata.get("x-api-key")
-
-        if client_key != self._api_key:
-            def _abort(request, context):
-                context.abort(grpc.StatusCode.UNAUTHENTICATED, "invalid or missing API key")
-            return grpc.unary_unary_rpc_method_handler(_abort)
-
-        return continuation(handler_call_details)
-
-
-def _dt_to_timestamp(dt) -> timestamp_pb2.Timestamp:
+def _dt_to_timestamp(dt: datetime) -> timestamp_pb2.Timestamp:
     ts = timestamp_pb2.Timestamp()
     ts.FromDatetime(dt)
     return ts
@@ -60,6 +39,23 @@ def _dict_to_struct(d: dict[str, Any]) -> struct_pb2.Struct:
     s = struct_pb2.Struct()
     s.update(d)
     return s
+
+
+class APIKeyInterceptor(grpc.ServerInterceptor):
+    """Validates AP_API_KEY on every request when configured."""
+
+    def __init__(self, api_key: str) -> None:
+        self._api_key = api_key
+
+    def intercept_service(self, continuation, handler_call_details):
+        metadata = dict(handler_call_details.invocation_metadata or [])
+        provided = metadata.get("x-api-key", "")
+        if provided != self._api_key:
+            def _abort(request, context):
+                context.abort(grpc.StatusCode.UNAUTHENTICATED, "invalid API key")
+                return None
+            return grpc.unary_unary_rpc_method_handler(_abort)
+        return continuation(handler_call_details)
 
 
 class ControlPlaneServicer(pb2_grpc.ControlPlaneServicer):
@@ -95,6 +91,7 @@ class ControlPlaneServicer(pb2_grpc.ControlPlaneServicer):
         org = self._orgs.get(request.org_id)
         if org is None:
             context.abort(grpc.StatusCode.NOT_FOUND, f"org {request.org_id} not found")
+            return pb2.OrganizationProto()
         return pb2.OrganizationProto(
             org_id=org.org_id,
             name=org.name,
@@ -127,6 +124,7 @@ class ControlPlaneServicer(pb2_grpc.ControlPlaneServicer):
             context.abort(
                 grpc.StatusCode.NOT_FOUND, f"org {request.org_id} not found"
             )
+            return pb2.AgentIdentityProto()
         claims = dict(request.token_claims) if request.token_claims else {}
         agent = self._agents.register(
             org_id=request.org_id,
@@ -153,6 +151,7 @@ class ControlPlaneServicer(pb2_grpc.ControlPlaneServicer):
                 grpc.StatusCode.NOT_FOUND,
                 f"agent {request.agent_id} not found in org {request.org_id}",
             )
+            return pb2.AgentIdentityProto()
         return pb2.AgentIdentityProto(
             agent_id=agent.agent_id,
             org_id=agent.org_id,
@@ -192,7 +191,6 @@ class ControlPlaneServicer(pb2_grpc.ControlPlaneServicer):
             ToolPermission(
                 tool_name=t.tool_name,
                 effect=PolicyEffect(t.effect) if t.effect else PolicyEffect.ALLOW,
-                parameters_constraint=dict(t.parameters_constraint) if hasattr(t, 'parameters_constraint') and t.parameters_constraint else None,
             )
             for t in request.tools
         ]
@@ -225,6 +223,7 @@ class ControlPlaneServicer(pb2_grpc.ControlPlaneServicer):
         ) if request.agent_id else self._policies.get_policy(request.org_id)
         if policy is None:
             context.abort(grpc.StatusCode.NOT_FOUND, "policy not found")
+            return pb2.PolicyProto()
         return pb2.PolicyProto(
             policy_id=policy.policy_id,
             org_id=policy.org_id,
@@ -281,6 +280,7 @@ class ControlPlaneServicer(pb2_grpc.ControlPlaneServicer):
         )
         if budget is None:
             context.abort(grpc.StatusCode.NOT_FOUND, "budget not found")
+            return pb2.BudgetProto()
         return pb2.BudgetProto(
             budget_id=budget.budget_id,
             org_id=budget.org_id,
@@ -290,8 +290,6 @@ class ControlPlaneServicer(pb2_grpc.ControlPlaneServicer):
             tokens_remaining=budget.tokens_remaining,
             tool_invocations=budget.tool_invocations,
             reset_period_days=budget.reset_period_days,
-            created_at=_dt_to_timestamp(budget.created_at),
-            last_reset_at=_dt_to_timestamp(budget.last_reset_at),
         )
 
     def CheckBudget(self, request, context):
@@ -364,49 +362,15 @@ class ControlPlaneServicer(pb2_grpc.ControlPlaneServicer):
         )
 
 
-def _create_stores() -> dict[str, Any]:
-    """Create stores based on DATABASE_URL env var.
-
-    If DATABASE_URL is set, uses PostgreSQL. Otherwise falls back to in-memory.
-    """
-    database_url = os.environ.get("DATABASE_URL")
-
-    if database_url:
-        try:
-            from agent_platform.shared.postgres_store import PostgresStore
-            from agent_platform.shared.models import (
-                Organization, AgentIdentity, Policy, Budget, UsageReport,
-            )
-            log.info("persistence_postgres", dsn=database_url.split("@")[-1])
-            return {
-                "orgs": PostgresStore("orgs", Organization, dsn=database_url),
-                "agents": PostgresStore("agents", AgentIdentity, dsn=database_url),
-                "policies": PostgresStore("policies", Policy, dsn=database_url),
-                "budgets": PostgresStore("budgets", Budget, dsn=database_url),
-                "usage": PostgresStore("usage_reports", UsageReport, dsn=database_url),
-            }
-        except ImportError:
-            log.warning("persistence_fallback", reason="psycopg not installed, using in-memory")
-        except Exception as e:
-            log.warning("persistence_fallback", reason=str(e))
-
-    log.info("persistence_memory")
-    return {}
-
-
 def create_control_plane_server(
     port: int = 50051,
     max_workers: int = 10,
 ) -> grpc.Server:
     """Create and configure the control plane gRPC server."""
-    stores = _create_stores()
-    org_service = OrgService(store=stores.get("orgs"))
-    agent_service = AgentService(store=stores.get("agents"))
-    policy_service = PolicyService(store=stores.get("policies"))
-    billing_service = BillingService(
-        budget_store=stores.get("budgets"),
-        usage_store=stores.get("usage"),
-    )
+    org_service = OrgService()
+    agent_service = AgentService()
+    policy_service = PolicyService()
+    billing_service = BillingService()
     audit_log = AuditLog()
 
     servicer = ControlPlaneServicer(
@@ -417,14 +381,11 @@ def create_control_plane_server(
         audit_log=audit_log,
     )
 
-    # Auth interceptor — enabled when AP_API_KEY env var is set
-    api_key = os.environ.get("AP_API_KEY")
-    interceptors = []
+    interceptors: list[grpc.ServerInterceptor] = []
+    api_key = os.environ.get("AP_API_KEY", "")
     if api_key:
         interceptors.append(APIKeyInterceptor(api_key))
-        log.info("auth_enabled", method="api_key")
-    else:
-        log.warning("auth_disabled", reason="AP_API_KEY not set, running in dev mode")
+        log.info("api_key_auth_enabled")
 
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=max_workers),

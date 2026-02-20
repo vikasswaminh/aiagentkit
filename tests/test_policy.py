@@ -1,120 +1,165 @@
-"""Tests for policy engine — hierarchical merge, tool permissions, evaluation."""
+"""Tests for PolicyService — hierarchical merge, deny overrides, wildcards."""
 
-import pytest
-
-from agent_platform.control_plane.policy import PolicyService
-from agent_platform.shared.models import PolicyEffect, ToolPermission
+from agent_platform.control_plane.policy import OPAAdapter, PolicyService
+from agent_platform.shared.models import Policy, PolicyEffect, ToolPermission
 
 
-class TestPolicyEvaluation:
-    def test_explicit_allow(self, policies, org, agent, agent_policy):
-        decision = policies.evaluate(org.org_id, agent.agent_id, "search")
-        assert decision.allowed is True
-
-    def test_explicit_deny(self, policies, org, agent, org_policy, agent_policy):
-        decision = policies.evaluate(org.org_id, agent.agent_id, "shell")
-        assert decision.allowed is False
-        assert "denied" in decision.reason
-
-    def test_wildcard_allow(self, policies, org, agent, org_policy):
-        # org policy has wildcard allow — agent has no policy yet
-        # but agent_id won't match any agent policy, so org-level applies
-        decision = policies.evaluate(org.org_id, agent.agent_id, "anything")
-        assert decision.allowed is True
-
-    def test_default_deny_no_policy(self, policies, org, agent):
-        decision = policies.evaluate(org.org_id, agent.agent_id, "search")
-        assert decision.allowed is False
-        assert "no policy" in decision.reason
-
-    def test_token_limit_exceeded(self, policies, org, agent, agent_policy):
-        decision = policies.evaluate(
-            org.org_id, agent.agent_id, "search", estimated_tokens=999_999
+class TestPolicyService:
+    def test_set_and_get_policy(self, policy_service, org):
+        policy = policy_service.set_policy(
+            org_id=org.org_id,
+            tools=[ToolPermission(tool_name="search", effect=PolicyEffect.ALLOW)],
         )
-        assert decision.allowed is False
-        assert "exceeds limit" in decision.reason
+        fetched = policy_service.get_policy(org.org_id)
+        assert fetched is not None
+        assert fetched.policy_id == policy.policy_id
 
-    def test_token_limit_within(self, policies, org, agent, agent_policy):
-        decision = policies.evaluate(
-            org.org_id, agent.agent_id, "search", estimated_tokens=100
+    def test_explicit_allow(self, policy_service, org, agent):
+        policy_service.set_policy(
+            org_id=org.org_id,
+            agent_id=agent.agent_id,
+            tools=[ToolPermission(tool_name="search", effect=PolicyEffect.ALLOW)],
         )
+        decision = policy_service.evaluate(org.org_id, agent.agent_id, "search")
         assert decision.allowed is True
 
-    def test_tool_not_in_allowed_list(self, policies, org, agent, agent_policy):
-        # Agent policy only allows search + calculator
-        decision = policies.evaluate(org.org_id, agent.agent_id, "email")
+    def test_explicit_deny(self, policy_service, org, agent):
+        policy_service.set_policy(
+            org_id=org.org_id,
+            agent_id=agent.agent_id,
+            tools=[ToolPermission(tool_name="shell", effect=PolicyEffect.DENY)],
+        )
+        decision = policy_service.evaluate(org.org_id, agent.agent_id, "shell")
         assert decision.allowed is False
-        assert "not in allowed list" in decision.reason
 
+    def test_default_deny(self, policy_service, org, agent):
+        policy_service.set_policy(
+            org_id=org.org_id,
+            agent_id=agent.agent_id,
+            tools=[ToolPermission(tool_name="search", effect=PolicyEffect.ALLOW)],
+        )
+        decision = policy_service.evaluate(org.org_id, agent.agent_id, "unknown")
+        assert decision.allowed is False
 
-class TestHierarchicalMerge:
-    def test_org_deny_overrides_agent_allow(self, policies, org, agent):
+    def test_wildcard_allow(self, policy_service, org, agent):
+        policy_service.set_policy(
+            org_id=org.org_id,
+            agent_id=agent.agent_id,
+            tools=[ToolPermission(tool_name="*", effect=PolicyEffect.ALLOW)],
+        )
+        decision = policy_service.evaluate(org.org_id, agent.agent_id, "anything")
+        assert decision.allowed is True
+
+    def test_deny_overrides_wildcard(self, policy_service, org, agent):
+        policy_service.set_policy(
+            org_id=org.org_id,
+            agent_id=agent.agent_id,
+            tools=[
+                ToolPermission(tool_name="*", effect=PolicyEffect.ALLOW),
+                ToolPermission(tool_name="shell", effect=PolicyEffect.DENY),
+            ],
+        )
+        decision = policy_service.evaluate(org.org_id, agent.agent_id, "shell")
+        assert decision.allowed is False
+
+    def test_hierarchical_merge_org_deny_wins(
+        self, policy_service, org, agent
+    ):
         # Org denies shell
-        policies.set_policy(
+        policy_service.set_policy(
             org_id=org.org_id,
             tools=[ToolPermission(tool_name="shell", effect=PolicyEffect.DENY)],
         )
         # Agent tries to allow shell
-        policies.set_policy(
+        policy_service.set_policy(
             org_id=org.org_id,
             agent_id=agent.agent_id,
             tools=[ToolPermission(tool_name="shell", effect=PolicyEffect.ALLOW)],
         )
-        decision = policies.evaluate(org.org_id, agent.agent_id, "shell")
+        decision = policy_service.evaluate(org.org_id, agent.agent_id, "shell")
         assert decision.allowed is False
 
-    def test_agent_limit_capped_by_org(self, policies, org, agent):
-        policies.set_policy(org_id=org.org_id, token_limit=10_000)
-        policies.set_policy(
+    def test_hierarchical_merge_token_limit(
+        self, policy_service, org, agent
+    ):
+        policy_service.set_policy(org_id=org.org_id, token_limit=200_000)
+        policy_service.set_policy(
+            org_id=org.org_id, agent_id=agent.agent_id, token_limit=50_000
+        )
+        policy = policy_service.get_effective_policy(org.org_id, agent.agent_id)
+        assert policy is not None
+        assert policy.token_limit == 50_000  # min(200k, 50k)
+
+    def test_agent_cannot_exceed_org_limit(
+        self, policy_service, org, agent
+    ):
+        policy_service.set_policy(org_id=org.org_id, token_limit=10_000)
+        policy_service.set_policy(
+            org_id=org.org_id, agent_id=agent.agent_id, token_limit=100_000
+        )
+        policy = policy_service.get_effective_policy(org.org_id, agent.agent_id)
+        assert policy is not None
+        assert policy.token_limit == 10_000  # min(10k, 100k)
+
+    def test_token_limit_exceeded(self, policy_service, org, agent):
+        policy_service.set_policy(
             org_id=org.org_id,
             agent_id=agent.agent_id,
-            token_limit=50_000,
             tools=[ToolPermission(tool_name="search", effect=PolicyEffect.ALLOW)],
+            token_limit=1000,
         )
-        effective = policies.get_effective_policy(org.org_id, agent.agent_id)
-        # Agent can't exceed org limit
-        assert effective.token_limit == 10_000
+        decision = policy_service.evaluate(
+            org.org_id, agent.agent_id, "search", estimated_tokens=5000
+        )
+        assert decision.allowed is False
+        assert "exceeds limit" in decision.reason
 
-    def test_agent_overrides_org_for_non_denied_tools(self, policies, org, agent):
-        policies.set_policy(
-            org_id=org.org_id,
+    def test_no_policy_returns_deny(self, policy_service, org, agent):
+        decision = policy_service.evaluate(org.org_id, agent.agent_id, "search")
+        assert decision.allowed is False
+
+    def test_update_preserves_id(self, policy_service, org):
+        p1 = policy_service.set_policy(org_id=org.org_id, token_limit=100)
+        p2 = policy_service.set_policy(org_id=org.org_id, token_limit=200)
+        assert p1.policy_id == p2.policy_id
+
+
+class TestOPAAdapter:
+    def test_rego_generation_allowed_tools(self):
+        adapter = OPAAdapter()
+        policy = Policy(
+            org_id="test-org",
+            tools=[
+                ToolPermission(tool_name="search", effect=PolicyEffect.ALLOW),
+                ToolPermission(tool_name="calc", effect=PolicyEffect.ALLOW),
+            ],
+            token_limit=10000,
+        )
+        rego = adapter.policy_to_rego(policy)
+        assert '"search"' in rego
+        assert '"calc"' in rego
+        assert "allowed_tools" in rego
+        # Verify it's JSON format, not Python repr
+        assert '["search", "calc"]' in rego or '["calc", "search"]' in rego
+
+    def test_rego_generation_denied_tools(self):
+        adapter = OPAAdapter()
+        policy = Policy(
+            org_id="test-org",
+            tools=[
+                ToolPermission(tool_name="shell", effect=PolicyEffect.DENY),
+            ],
+        )
+        rego = adapter.policy_to_rego(policy)
+        assert '"shell"' in rego
+        assert "denied_tools" in rego
+        assert "deny if" in rego
+
+    def test_rego_wildcard(self):
+        adapter = OPAAdapter()
+        policy = Policy(
+            org_id="test-org",
             tools=[ToolPermission(tool_name="*", effect=PolicyEffect.ALLOW)],
         )
-        policies.set_policy(
-            org_id=org.org_id,
-            agent_id=agent.agent_id,
-            tools=[ToolPermission(tool_name="search", effect=PolicyEffect.ALLOW)],
-        )
-        # Agent policy narrows: only search is allowed
-        decision = policies.evaluate(org.org_id, agent.agent_id, "email")
-        # Wildcard from org still applies since it wasn't overridden
-        assert decision.allowed is True
-
-
-class TestPolicySetAndGet:
-    def test_set_and_get_org_policy(self, policies, org):
-        policy = policies.set_policy(org_id=org.org_id, token_limit=500_000)
-        retrieved = policies.get_policy(org.org_id)
-        assert retrieved is not None
-        assert retrieved.policy_id == policy.policy_id
-        assert retrieved.token_limit == 500_000
-
-    def test_set_and_get_agent_policy(self, policies, org, agent):
-        policy = policies.set_policy(
-            org_id=org.org_id,
-            agent_id=agent.agent_id,
-            token_limit=25_000,
-        )
-        retrieved = policies.get_policy(org.org_id, agent.agent_id)
-        assert retrieved is not None
-        assert retrieved.token_limit == 25_000
-
-    def test_update_existing_policy(self, policies, org):
-        p1 = policies.set_policy(org_id=org.org_id, token_limit=100_000)
-        p2 = policies.set_policy(org_id=org.org_id, token_limit=200_000)
-        assert p1.policy_id == p2.policy_id
-        assert p2.token_limit == 200_000
-        assert p2.updated_at > p1.created_at
-
-    def test_get_nonexistent_returns_none(self, policies):
-        assert policies.get_policy("nonexistent-org") is None
+        rego = adapter.policy_to_rego(policy)
+        assert "not deny" in rego

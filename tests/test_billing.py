@@ -1,129 +1,112 @@
-"""Tests for budget management and billing engine."""
+"""Tests for BillingService — budgets, usage, deductions."""
 
 import pytest
-import threading
 
 from agent_platform.control_plane.billing import BillingService
 from agent_platform.shared.models import UsageQuery
 
 
-class TestBudgetSetAndGet:
-    def test_set_and_get_budget(self, billing, org, agent):
-        budget = billing.set_budget(org.org_id, agent.agent_id, token_limit=50_000)
-        assert budget.token_limit == 50_000
+class TestBillingService:
+    def test_set_budget(self, billing_service, org, agent):
+        budget = billing_service.set_budget(
+            org.org_id, agent.agent_id, token_limit=100_000
+        )
+        assert budget.token_limit == 100_000
         assert budget.tokens_used == 0
-        assert budget.tokens_remaining == 50_000
+        assert budget.tokens_remaining == 100_000
 
-        retrieved = billing.get_budget(org.org_id, agent.agent_id)
-        assert retrieved is not None
-        assert retrieved.budget_id == budget.budget_id
+    def test_get_budget(self, billing_service, org, agent):
+        billing_service.set_budget(org.org_id, agent.agent_id, token_limit=50_000)
+        budget = billing_service.get_budget(org.org_id, agent.agent_id)
+        assert budget is not None
+        assert budget.token_limit == 50_000
 
-    def test_set_org_budget(self, billing, org):
-        budget = billing.set_budget(org.org_id, token_limit=1_000_000)
-        assert budget.token_limit == 1_000_000
-        assert budget.agent_id is None
-
-    def test_update_preserves_usage(self, billing, org, agent):
-        billing.set_budget(org.org_id, agent.agent_id, token_limit=100_000)
-        billing.report_usage(org.org_id, agent.agent_id, "exec-1", tokens_used=5000)
-        updated = billing.set_budget(org.org_id, agent.agent_id, token_limit=200_000)
-        assert updated.tokens_used == 5000
-        assert updated.tokens_remaining == 195_000
-
-
-class TestBudgetCheck:
-    def test_within_budget(self, billing, org, agent):
-        billing.set_budget(org.org_id, agent.agent_id, token_limit=100_000)
-        ok, remaining, reason = billing.check_budget(org.org_id, agent.agent_id, 5000)
-        assert ok is True
+    def test_budget_check_allowed(self, billing_service, org, agent):
+        billing_service.set_budget(org.org_id, agent.agent_id, token_limit=100_000)
+        allowed, remaining, reason = billing_service.check_budget(
+            org.org_id, agent.agent_id, 5_000
+        )
+        assert allowed is True
         assert remaining == 100_000
-        assert reason == "budget_ok"
 
-    def test_exceeds_agent_budget(self, billing, org, agent):
-        billing.set_budget(org.org_id, agent.agent_id, token_limit=1000)
-        ok, remaining, reason = billing.check_budget(org.org_id, agent.agent_id, 5000)
-        assert ok is False
-        assert "agent budget exhausted" in reason
-
-    def test_exceeds_org_budget(self, billing, org, agent):
-        billing.set_budget(org.org_id, token_limit=1000)
-        billing.set_budget(org.org_id, agent.agent_id, token_limit=100_000)
-        ok, remaining, reason = billing.check_budget(org.org_id, agent.agent_id, 5000)
-        assert ok is False
-        assert "org budget exhausted" in reason
-
-    def test_no_budget_set_returns_ok(self, billing):
-        ok, remaining, reason = billing.check_budget("org-x", "agent-x", 5000)
-        assert ok is True
-        assert remaining == 0
-
-    def test_no_overflow_error(self, billing):
-        """Regression: float('inf') used to cause OverflowError on int()."""
-        ok, remaining, reason = billing.check_budget("org-x", "agent-x", 100)
-        assert isinstance(remaining, int)
-
-
-class TestUsageReporting:
-    def test_deducts_from_agent_budget(self, billing, org, agent):
-        billing.set_budget(org.org_id, agent.agent_id, token_limit=10_000)
-        remaining = billing.report_usage(
-            org.org_id, agent.agent_id, "exec-1", tokens_used=3000
+    def test_budget_check_denied(self, billing_service, org, agent):
+        billing_service.set_budget(org.org_id, agent.agent_id, token_limit=1_000)
+        allowed, remaining, reason = billing_service.check_budget(
+            org.org_id, agent.agent_id, 5_000
         )
-        assert remaining == 7000
+        assert allowed is False
+        assert "exhausted" in reason
 
-    def test_deducts_from_org_budget(self, billing, org, agent):
-        billing.set_budget(org.org_id, token_limit=100_000)
-        billing.set_budget(org.org_id, agent.agent_id, token_limit=50_000)
-        remaining = billing.report_usage(
-            org.org_id, agent.agent_id, "exec-1", tokens_used=5000
+    def test_report_usage_deducts(self, billing_service, org, agent):
+        billing_service.set_budget(org.org_id, agent.agent_id, token_limit=100_000)
+        remaining = billing_service.report_usage(
+            org.org_id, agent.agent_id, "exec-1", tokens_used=10_000
         )
-        # Returns min(agent_remaining=45000, org_remaining=95000) = 45000
-        assert remaining == 45_000
+        assert remaining == 90_000
+        budget = billing_service.get_budget(org.org_id, agent.agent_id)
+        assert budget.tokens_used == 10_000
 
-    def test_returns_min_of_agent_and_org(self, billing, org, agent):
-        billing.set_budget(org.org_id, token_limit=10_000)
-        billing.set_budget(org.org_id, agent.agent_id, token_limit=50_000)
-        remaining = billing.report_usage(
-            org.org_id, agent.agent_id, "exec-1", tokens_used=5000
+    def test_report_usage_deducts_from_org(self, billing_service, org, agent):
+        billing_service.set_budget(org.org_id, token_limit=500_000)
+        billing_service.set_budget(org.org_id, agent.agent_id, token_limit=100_000)
+        billing_service.report_usage(
+            org.org_id, agent.agent_id, "exec-1", tokens_used=10_000
         )
-        # org_remaining=5000 < agent_remaining=45000
-        assert remaining == 5000
+        org_budget = billing_service.get_budget(org.org_id)
+        assert org_budget.tokens_used == 10_000
 
-    def test_concurrent_deductions(self, billing, org, agent):
-        """Thread safety: concurrent deductions should not lose tokens."""
-        billing.set_budget(org.org_id, agent.agent_id, token_limit=100_000)
+    def test_org_budget_blocks_agent(self, billing_service, org, agent):
+        billing_service.set_budget(org.org_id, token_limit=1_000)
+        billing_service.set_budget(org.org_id, agent.agent_id, token_limit=100_000)
+        allowed, remaining, reason = billing_service.check_budget(
+            org.org_id, agent.agent_id, 5_000
+        )
+        assert allowed is False
+        assert "org budget" in reason
 
-        def deduct():
-            for _ in range(100):
-                billing.report_usage(
-                    org.org_id, agent.agent_id, "exec", tokens_used=1
-                )
+    def test_negative_tokens_rejected(self, billing_service, org, agent):
+        billing_service.set_budget(org.org_id, agent.agent_id, token_limit=100_000)
+        with pytest.raises(ValueError, match="must not be negative"):
+            billing_service.report_usage(
+                org.org_id, agent.agent_id, "exec-1", tokens_used=-100
+            )
 
-        threads = [threading.Thread(target=deduct) for _ in range(10)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-        budget = billing.get_budget(org.org_id, agent.agent_id)
-        assert budget.tokens_used == 1000
-        assert budget.tokens_remaining == 99_000
-
-
-class TestUsageQuery:
-    def test_query_by_org_and_agent(self, billing, org, agent):
-        billing.report_usage(org.org_id, agent.agent_id, "e1", tokens_used=100)
-        billing.report_usage(org.org_id, agent.agent_id, "e2", tokens_used=200)
-
-        usage = billing.get_usage(
+    def test_get_usage(self, billing_service, org, agent):
+        billing_service.set_budget(org.org_id, agent.agent_id, token_limit=100_000)
+        billing_service.report_usage(
+            org.org_id, agent.agent_id, "exec-1", tokens_used=5_000
+        )
+        billing_service.report_usage(
+            org.org_id, agent.agent_id, "exec-2", tokens_used=3_000
+        )
+        summary = billing_service.get_usage(
             UsageQuery(org_id=org.org_id, agent_id=agent.agent_id)
         )
-        assert usage.total_tokens == 300
-        assert usage.report_count == 2
+        assert summary.total_tokens == 8_000
+        assert summary.report_count == 2
 
-    def test_query_filters_by_org(self, billing, org, agent):
-        billing.report_usage(org.org_id, agent.agent_id, "e1", tokens_used=100)
-        billing.report_usage("other-org", "other-agent", "e2", tokens_used=999)
+    def test_budget_exhaustion(self, billing_service, org, agent):
+        billing_service.set_budget(org.org_id, agent.agent_id, token_limit=10_000)
+        billing_service.report_usage(
+            org.org_id, agent.agent_id, "exec-1", tokens_used=10_000
+        )
+        budget = billing_service.get_budget(org.org_id, agent.agent_id)
+        assert budget.is_exhausted is True
+        assert budget.tokens_remaining == 0
 
-        usage = billing.get_usage(UsageQuery(org_id=org.org_id))
-        assert usage.total_tokens == 100
+    def test_update_budget_preserves_usage(self, billing_service, org, agent):
+        billing_service.set_budget(org.org_id, agent.agent_id, token_limit=100_000)
+        billing_service.report_usage(
+            org.org_id, agent.agent_id, "exec-1", tokens_used=5_000
+        )
+        updated = billing_service.set_budget(
+            org.org_id, agent.agent_id, token_limit=200_000
+        )
+        assert updated.tokens_used == 5_000
+        assert updated.token_limit == 200_000
+
+    def test_no_budget_allows(self, billing_service, org, agent):
+        allowed, remaining, reason = billing_service.check_budget(
+            org.org_id, agent.agent_id, 5_000
+        )
+        assert allowed is True

@@ -6,10 +6,12 @@ import threading
 from datetime import datetime, timezone
 
 from agent_platform.shared.logging import get_logger
-from agent_platform.shared.models import Budget, UsageQuery, UsageReport, UsageSummary
+from agent_platform.shared.models import Budget, UsageQuery, UsageReport, UsageSummary, _new_id
 from agent_platform.shared.store import InMemoryStore, Store
 
 log = get_logger()
+
+_MAX_BUDGET = 2**53  # safe integer ceiling, avoids float('inf')
 
 
 def _budget_key(org_id: str, agent_id: str | None = None) -> str:
@@ -43,7 +45,7 @@ class BillingService:
         with self._lock:
             existing = self._budgets.get(key)
             budget = Budget(
-                budget_id=existing.budget_id if existing else Budget().budget_id,
+                budget_id=existing.budget_id if existing else _new_id(),
                 org_id=org_id,
                 agent_id=agent_id,
                 token_limit=token_limit,
@@ -97,14 +99,10 @@ class BillingService:
                         f"org budget exhausted: {org_budget.tokens_remaining} remaining, {estimated_tokens} requested",
                     )
 
-            # Compute remaining without float("inf") to avoid OverflowError
-            if agent_budget and org_budget:
-                remaining = min(agent_budget.tokens_remaining, org_budget.tokens_remaining)
-            elif agent_budget:
-                remaining = agent_budget.tokens_remaining
-            elif org_budget:
-                remaining = org_budget.tokens_remaining
-            else:
+            agent_remaining = agent_budget.tokens_remaining if agent_budget else _MAX_BUDGET
+            org_remaining = org_budget.tokens_remaining if org_budget else _MAX_BUDGET
+            remaining = min(agent_remaining, org_remaining)
+            if remaining == _MAX_BUDGET:
                 remaining = 0
             return (True, remaining, "budget_ok")
 
@@ -121,6 +119,9 @@ class BillingService:
         tool_name: str | None = None,
     ) -> int:
         """Record usage and deduct from budgets. Returns tokens remaining."""
+        if tokens_used < 0:
+            raise ValueError("tokens_used must not be negative")
+
         report = UsageReport(
             org_id=org_id,
             agent_id=agent_id,
@@ -133,6 +134,7 @@ class BillingService:
 
         with self._lock:
             self._usage.put(report.report_id, report)
+
             # Deduct from agent budget
             agent_budget = self._budgets.get(_budget_key(org_id, agent_id))
             if agent_budget:
@@ -147,17 +149,7 @@ class BillingService:
                 org_budget.tool_invocations += tool_invocations
                 self._budgets.put(_budget_key(org_id), org_budget)
 
-            # Return min of agent + org remaining
-            agent_rem = agent_budget.tokens_remaining if agent_budget else None
-            org_rem = org_budget.tokens_remaining if org_budget else None
-            if agent_rem is not None and org_rem is not None:
-                remaining = min(agent_rem, org_rem)
-            elif agent_rem is not None:
-                remaining = agent_rem
-            elif org_rem is not None:
-                remaining = org_rem
-            else:
-                remaining = 0
+            remaining = agent_budget.tokens_remaining if agent_budget else 0
 
         log.info(
             "usage_reported",

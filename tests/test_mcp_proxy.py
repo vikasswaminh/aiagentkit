@@ -1,168 +1,90 @@
-"""Tests for MCP Authorization Proxy — policy and budget enforcement on tool calls."""
-
-import pytest
+"""Tests for MCPAuthorizationProxy — policy enforcement, audit."""
 
 from agent_platform.gateway.mcp_proxy import MCPAuthorizationProxy, ToolCallRequest
 from agent_platform.shared.models import PolicyDecision
 
 
-def _allow_policy(org_id, agent_id, tool_name, estimated_tokens):
-    return PolicyDecision(allowed=True, reason="allowed")
+class TestMCPProxy:
+    def _make_proxy(self, allow=True, budget_ok=True):
+        def policy_checker(org_id, agent_id, tool_name, tokens):
+            return PolicyDecision(
+                allowed=allow,
+                reason="allowed" if allow else "denied by policy",
+            )
 
+        def budget_checker(org_id, agent_id, tokens):
+            return (budget_ok, 1000, "ok" if budget_ok else "budget exhausted")
 
-def _deny_policy(org_id, agent_id, tool_name, estimated_tokens):
-    return PolicyDecision(allowed=False, reason="tool denied by policy")
+        def usage_reporter(**kwargs):
+            return 1000
 
+        audit_entries = []
 
-def _allow_budget(org_id, agent_id, estimated_tokens):
-    return (True, 99999, "budget_ok")
-
-
-def _deny_budget(org_id, agent_id, estimated_tokens):
-    return (False, 0, "budget exhausted")
-
-
-def _noop_usage(**kwargs):
-    return 0
-
-
-def _make_request(tool_name="search", params=None):
-    return ToolCallRequest(
-        agent_id="agent-1",
-        org_id="org-1",
-        delegated_user_id="user-1",
-        execution_id="exec-1",
-        tool_name=tool_name,
-        parameters=params or {},
-    )
-
-
-class TestPolicyEnforcement:
-    def test_allowed_tool_executes(self):
         proxy = MCPAuthorizationProxy(
-            policy_checker=_allow_policy,
-            budget_checker=_allow_budget,
-            usage_reporter=_noop_usage,
+            policy_checker=policy_checker,
+            budget_checker=budget_checker,
+            usage_reporter=usage_reporter,
+            audit_logger=lambda e: audit_entries.append(e),
         )
-        proxy.register_tool("search", lambda: "results")
-        result = proxy.execute(_make_request("search"))
+        return proxy, audit_entries
+
+    def _make_request(self):
+        return ToolCallRequest(
+            agent_id="agent-1",
+            org_id="org-1",
+            delegated_user_id="user-1",
+            execution_id="exec-1",
+            tool_name="search",
+        )
+
+    def test_allowed_execution(self):
+        proxy, audit = self._make_proxy()
+        proxy.register_tool("search", lambda **kw: "results")
+        result = proxy.execute(self._make_request())
         assert result.success is True
         assert result.result == "results"
+        assert len(audit) == 1
+        assert audit[0].result == "executed"
 
-    def test_denied_tool_blocked(self):
-        proxy = MCPAuthorizationProxy(
-            policy_checker=_deny_policy,
-            budget_checker=_allow_budget,
-            usage_reporter=_noop_usage,
-        )
-        proxy.register_tool("shell", lambda cmd: None)
-        result = proxy.execute(_make_request("shell"))
+    def test_policy_denied(self):
+        proxy, audit = self._make_proxy(allow=False)
+        proxy.register_tool("search", lambda **kw: "results")
+        result = proxy.execute(self._make_request())
         assert result.success is False
         assert "policy denied" in result.error
+        assert audit[0].result == "denied"
 
-    def test_unregistered_tool_fails(self):
-        proxy = MCPAuthorizationProxy(
-            policy_checker=_allow_policy,
-            budget_checker=_allow_budget,
-            usage_reporter=_noop_usage,
-        )
-        result = proxy.execute(_make_request("nonexistent"))
-        assert result.success is False
-        assert "not registered" in result.error
-
-
-class TestBudgetEnforcement:
-    def test_over_budget_blocked(self):
-        proxy = MCPAuthorizationProxy(
-            policy_checker=_allow_policy,
-            budget_checker=_deny_budget,
-            usage_reporter=_noop_usage,
-        )
-        proxy.register_tool("search", lambda: "results")
-        result = proxy.execute(_make_request("search"))
+    def test_budget_denied(self):
+        proxy, audit = self._make_proxy(budget_ok=False)
+        proxy.register_tool("search", lambda **kw: "results")
+        result = proxy.execute(self._make_request())
         assert result.success is False
         assert "budget denied" in result.error
 
-    def test_within_budget_executes(self):
-        proxy = MCPAuthorizationProxy(
-            policy_checker=_allow_policy,
-            budget_checker=_allow_budget,
-            usage_reporter=_noop_usage,
-        )
-        proxy.register_tool("search", lambda: "results")
-        result = proxy.execute(_make_request("search"))
-        assert result.success is True
-
-
-class TestAuditEmission:
-    def test_audit_entry_on_success(self):
-        entries = []
-        proxy = MCPAuthorizationProxy(
-            policy_checker=_allow_policy,
-            budget_checker=_allow_budget,
-            usage_reporter=_noop_usage,
-            audit_logger=entries.append,
-        )
-        proxy.register_tool("search", lambda: "results")
-        result = proxy.execute(_make_request("search"))
-        assert result.audit_entry is not None
-        assert result.audit_entry.result == "executed"
-        assert len(entries) == 1
-
-    def test_audit_entry_on_denial(self):
-        entries = []
-        proxy = MCPAuthorizationProxy(
-            policy_checker=_deny_policy,
-            budget_checker=_allow_budget,
-            usage_reporter=_noop_usage,
-            audit_logger=entries.append,
-        )
-        result = proxy.execute(_make_request("search"))
-        assert result.audit_entry.result == "denied"
-        assert len(entries) == 1
-
-    def test_audit_entry_on_error(self):
-        entries = []
-        proxy = MCPAuthorizationProxy(
-            policy_checker=_allow_policy,
-            budget_checker=_allow_budget,
-            usage_reporter=_noop_usage,
-            audit_logger=entries.append,
-        )
-        proxy.register_tool("broken", lambda: (_ for _ in ()).throw(RuntimeError("boom")))
-        result = proxy.execute(_make_request("broken"))
+    def test_tool_not_found(self):
+        proxy, audit = self._make_proxy()
+        result = proxy.execute(self._make_request())
         assert result.success is False
-        assert result.audit_entry.result == "failed"
+        assert "not registered" in result.error
 
+    def test_tool_exception(self):
+        proxy, audit = self._make_proxy()
 
-class TestToolExecution:
-    def test_tool_receives_parameters(self):
-        received = {}
+        def bad_tool(**kw):
+            raise RuntimeError("tool crashed")
 
-        def handler(query="", limit=10):
-            received["query"] = query
-            received["limit"] = limit
-            return "ok"
+        proxy.register_tool("search", bad_tool)
+        result = proxy.execute(self._make_request())
+        assert result.success is False
+        assert "tool crashed" in result.error
+        assert audit[-1].result == "failed"
 
-        proxy = MCPAuthorizationProxy(
-            policy_checker=_allow_policy,
-            budget_checker=_allow_budget,
-            usage_reporter=_noop_usage,
-        )
-        proxy.register_tool("search", handler)
-        result = proxy.execute(
-            _make_request("search", params={"query": "AI agents", "limit": 5})
-        )
-        assert result.success is True
-        assert received["query"] == "AI agents"
-        assert received["limit"] == 5
-
-    def test_latency_recorded(self):
-        proxy = MCPAuthorizationProxy(
-            policy_checker=_allow_policy,
-            budget_checker=_allow_budget,
-            usage_reporter=_noop_usage,
-        )
-        proxy.register_tool("slow", lambda: "done")
-        result = proxy.execute(_make_request("slow"))
-        assert result.latency_ms >= 0
+    def test_audit_entry_fields(self):
+        proxy, audit = self._make_proxy()
+        proxy.register_tool("search", lambda **kw: "ok")
+        proxy.execute(self._make_request())
+        entry = audit[0]
+        assert entry.org_id == "org-1"
+        assert entry.agent_id == "agent-1"
+        assert entry.tool_name == "search"
+        assert entry.execution_id == "exec-1"

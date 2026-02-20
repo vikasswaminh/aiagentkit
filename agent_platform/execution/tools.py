@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import ipaddress
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlparse
 
 from agent_platform.shared.logging import get_logger
 
@@ -60,35 +62,44 @@ class ToolRegistry:
         return len(self._tools)
 
 
+# --- SSRF protection ---
+
+_BLOCKED_HOSTS = {"metadata.google.internal", "169.254.169.254"}
+
+
+def _is_ssrf_safe(url: str) -> bool:
+    """Validate URL is not targeting internal/private networks."""
+    parsed = urlparse(url)
+    hostname = parsed.hostname
+    if not hostname:
+        return False
+    if hostname in _BLOCKED_HOSTS:
+        return False
+    try:
+        addr = ipaddress.ip_address(hostname)
+        if addr.is_private or addr.is_loopback or addr.is_link_local:
+            return False
+    except ValueError:
+        # hostname is a DNS name, not an IP literal — allow
+        pass
+    return True
+
+
 # --- Built-in Tools ---
 
 
 class HTTPTool(BaseTool):
     """HTTP request tool with SSRF protection."""
 
-    _ALLOWED_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
-    _DEFAULT_TIMEOUT = 30
-
     def execute(self, url: str = "", method: str = "GET", **kwargs: Any) -> Any:
+        if not url:
+            raise ValueError("url parameter is required")
+        if not _is_ssrf_safe(url):
+            raise ValueError(f"URL blocked by SSRF protection: {url}")
+
         import httpx
-        from agent_platform.shared.validation import validate_url, ValidationError
 
-        # Validate URL against SSRF
-        try:
-            validate_url(url, field="url")
-        except ValidationError as e:
-            raise ValueError(f"URL validation failed: {e.message}")
-
-        # Restrict methods
-        method = method.upper()
-        if method not in self._ALLOWED_METHODS:
-            raise ValueError(f"HTTP method '{method}' not allowed")
-
-        # Remove dangerous kwargs
-        kwargs.pop("follow_redirects", None)
-        kwargs.pop("auth", None)
-
-        with httpx.Client(timeout=self._DEFAULT_TIMEOUT) as client:
+        with httpx.Client(timeout=30.0, follow_redirects=False) as client:
             resp = client.request(method, url, **kwargs)
             return {
                 "status_code": resp.status_code,
@@ -99,7 +110,7 @@ class HTTPTool(BaseTool):
     def schema(self) -> ToolSchema:
         return ToolSchema(
             name="http",
-            description="Make HTTP requests (SSRF-protected)",
+            description="Make HTTP requests",
             parameters={
                 "url": {"type": "string", "required": True},
                 "method": {"type": "string", "default": "GET"},
