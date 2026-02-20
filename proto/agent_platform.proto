@@ -1,0 +1,304 @@
+syntax = "proto3";
+
+package agent_platform;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+// ============================================================================
+// Messages
+// ============================================================================
+
+// --- Organization ---
+
+message OrganizationProto {
+  string org_id = 1;
+  string name = 2;
+  google.protobuf.Timestamp created_at = 3;
+  google.protobuf.Struct metadata = 4;
+}
+
+message CreateOrgRequest {
+  string name = 1;
+  google.protobuf.Struct metadata = 2;
+}
+
+message GetOrgRequest {
+  string org_id = 1;
+}
+
+message ListOrgsRequest {}
+
+message ListOrgsResponse {
+  repeated OrganizationProto organizations = 1;
+}
+
+message DeleteOrgRequest {
+  string org_id = 1;
+}
+
+message DeleteOrgResponse {
+  bool success = 1;
+}
+
+// --- Agent Identity ---
+
+message AgentIdentityProto {
+  string agent_id = 1;
+  string org_id = 2;
+  string name = 3;
+  string role = 4;  // executor, planner, reviewer, admin
+  string delegated_user_id = 5;
+  google.protobuf.Struct token_claims = 6;
+  google.protobuf.Timestamp created_at = 7;
+  bool active = 8;
+}
+
+message RegisterAgentRequest {
+  string org_id = 1;
+  string name = 2;
+  string role = 3;
+  string delegated_user_id = 4;
+  google.protobuf.Struct token_claims = 5;
+}
+
+message GetAgentRequest {
+  string agent_id = 1;
+  string org_id = 2;
+}
+
+message ListAgentsRequest {
+  string org_id = 1;
+}
+
+message ListAgentsResponse {
+  repeated AgentIdentityProto agents = 1;
+}
+
+message DeactivateAgentRequest {
+  string agent_id = 1;
+  string org_id = 2;
+}
+
+message DeactivateAgentResponse {
+  bool success = 1;
+}
+
+// --- Policy ---
+
+message ToolPermissionProto {
+  string tool_name = 1;
+  string effect = 2;  // allow, deny
+  google.protobuf.Struct parameters_constraint = 3;
+}
+
+message PolicyProto {
+  string policy_id = 1;
+  string org_id = 2;
+  string agent_id = 3;  // empty = org-level
+  repeated ToolPermissionProto tools = 4;
+  int64 token_limit = 5;
+  int32 execution_timeout_seconds = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+}
+
+message SetPolicyRequest {
+  string org_id = 1;
+  string agent_id = 2;  // empty = org-level
+  repeated ToolPermissionProto tools = 3;
+  int64 token_limit = 4;
+  int32 execution_timeout_seconds = 5;
+}
+
+message GetPolicyRequest {
+  string org_id = 1;
+  string agent_id = 2;
+}
+
+message EvaluatePolicyRequest {
+  string org_id = 1;
+  string agent_id = 2;
+  string tool_name = 3;
+  int64 estimated_tokens = 4;
+  google.protobuf.Struct context = 5;
+}
+
+message PolicyDecisionProto {
+  bool allowed = 1;
+  string reason = 2;
+  string matched_policy_id = 3;
+  google.protobuf.Timestamp evaluated_at = 4;
+}
+
+// --- Budget ---
+
+message BudgetProto {
+  string budget_id = 1;
+  string org_id = 2;
+  string agent_id = 3;  // empty = org-level
+  int64 token_limit = 4;
+  int64 tokens_used = 5;
+  int64 tokens_remaining = 6;
+  int32 tool_invocations = 7;
+  int32 reset_period_days = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp last_reset_at = 10;
+}
+
+message SetBudgetRequest {
+  string org_id = 1;
+  string agent_id = 2;  // empty = org-level
+  int64 token_limit = 3;
+  int32 reset_period_days = 4;
+}
+
+message CheckBudgetRequest {
+  string org_id = 1;
+  string agent_id = 2;
+  int64 estimated_tokens = 3;
+}
+
+message CheckBudgetResponse {
+  bool allowed = 1;
+  int64 tokens_remaining = 2;
+  string reason = 3;
+}
+
+message GetBudgetRequest {
+  string org_id = 1;
+  string agent_id = 2;
+}
+
+// --- Usage ---
+
+message ReportUsageRequest {
+  string org_id = 1;
+  string agent_id = 2;
+  string execution_id = 3;
+  int64 tokens_used = 4;
+  int32 tool_invocations = 5;
+  int64 execution_duration_ms = 6;
+  string tool_name = 7;
+}
+
+message ReportUsageResponse {
+  bool success = 1;
+  int64 tokens_remaining = 2;
+}
+
+message GetUsageRequest {
+  string org_id = 1;
+  string agent_id = 2;
+  google.protobuf.Timestamp start_time = 3;
+  google.protobuf.Timestamp end_time = 4;
+}
+
+message UsageSummaryProto {
+  string org_id = 1;
+  string agent_id = 2;
+  int64 total_tokens = 3;
+  int32 total_tool_invocations = 4;
+  int64 total_execution_duration_ms = 5;
+  int32 report_count = 6;
+}
+
+// --- Execution ---
+
+message ExecuteTaskRequest {
+  string agent_id = 1;
+  string org_id = 2;
+  string task = 3;
+  string execution_id = 4;
+  google.protobuf.Struct context = 5;
+}
+
+message ToolCallProto {
+  string tool_name = 1;
+  google.protobuf.Struct parameters = 2;
+  string result = 3;
+  int64 latency_ms = 4;
+}
+
+message ExecuteTaskResponse {
+  string execution_id = 1;
+  string agent_id = 2;
+  string org_id = 3;
+  string result = 4;
+  int64 tokens_used = 5;
+  repeated ToolCallProto tool_calls = 6;
+  int64 duration_ms = 7;
+  bool success = 8;
+  string error = 9;
+  google.protobuf.Timestamp completed_at = 10;
+}
+
+// --- Audit ---
+
+message AuditEntryProto {
+  string entry_id = 1;
+  string org_id = 2;
+  string agent_id = 3;
+  string delegated_user_id = 4;
+  string execution_id = 5;
+  string action = 6;
+  string tool_name = 7;
+  google.protobuf.Struct parameters = 8;
+  string result = 9;
+  string reason = 10;
+  int64 latency_ms = 11;
+  int64 tokens_used = 12;
+  google.protobuf.Timestamp timestamp = 13;
+}
+
+message GetAuditLogRequest {
+  string org_id = 1;
+  string agent_id = 2;
+  string execution_id = 3;
+  google.protobuf.Timestamp start_time = 4;
+  google.protobuf.Timestamp end_time = 5;
+  int32 limit = 6;
+}
+
+message GetAuditLogResponse {
+  repeated AuditEntryProto entries = 1;
+}
+
+// ============================================================================
+// Services
+// ============================================================================
+
+service ControlPlane {
+  // Organization management
+  rpc CreateOrganization(CreateOrgRequest) returns (OrganizationProto);
+  rpc GetOrganization(GetOrgRequest) returns (OrganizationProto);
+  rpc ListOrganizations(ListOrgsRequest) returns (ListOrgsResponse);
+  rpc DeleteOrganization(DeleteOrgRequest) returns (DeleteOrgResponse);
+
+  // Agent identity management
+  rpc RegisterAgent(RegisterAgentRequest) returns (AgentIdentityProto);
+  rpc GetAgent(GetAgentRequest) returns (AgentIdentityProto);
+  rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse);
+  rpc DeactivateAgent(DeactivateAgentRequest) returns (DeactivateAgentResponse);
+
+  // Policy management
+  rpc SetPolicy(SetPolicyRequest) returns (PolicyProto);
+  rpc GetPolicy(GetPolicyRequest) returns (PolicyProto);
+  rpc EvaluatePolicy(EvaluatePolicyRequest) returns (PolicyDecisionProto);
+
+  // Budget management
+  rpc SetBudget(SetBudgetRequest) returns (BudgetProto);
+  rpc GetBudget(GetBudgetRequest) returns (BudgetProto);
+  rpc CheckBudget(CheckBudgetRequest) returns (CheckBudgetResponse);
+
+  // Usage tracking
+  rpc ReportUsage(ReportUsageRequest) returns (ReportUsageResponse);
+  rpc GetUsage(GetUsageRequest) returns (UsageSummaryProto);
+
+  // Audit
+  rpc GetAuditLog(GetAuditLogRequest) returns (GetAuditLogResponse);
+}
+
+service ExecutionService {
+  rpc ExecuteTask(ExecuteTaskRequest) returns (ExecuteTaskResponse);
+}
