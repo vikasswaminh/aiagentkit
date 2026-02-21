@@ -3,6 +3,7 @@
 import pytest
 
 from agent_platform.control_plane.billing import BillingService
+from agent_platform.shared.exceptions import InvalidUsageError
 from agent_platform.shared.models import UsageQuery
 
 
@@ -66,7 +67,7 @@ class TestBillingService:
 
     def test_negative_tokens_rejected(self, billing_service, org, agent):
         billing_service.set_budget(org.org_id, agent.agent_id, token_limit=100_000)
-        with pytest.raises(ValueError, match="must not be negative"):
+        with pytest.raises(InvalidUsageError, match="must not be negative"):
             billing_service.report_usage(
                 org.org_id, agent.agent_id, "exec-1", tokens_used=-100
             )

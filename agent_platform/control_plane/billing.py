@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 from datetime import datetime, timezone
 
+from agent_platform.shared.exceptions import InvalidUsageError
 from agent_platform.shared.logging import get_logger
 from agent_platform.shared.models import Budget, UsageQuery, UsageReport, UsageSummary, _new_id
 from agent_platform.shared.store import InMemoryStore, Store
@@ -120,7 +121,7 @@ class BillingService:
     ) -> int:
         """Record usage and deduct from budgets. Returns tokens remaining."""
         if tokens_used < 0:
-            raise ValueError("tokens_used must not be negative")
+            raise InvalidUsageError("tokens_used must not be negative")
 
         report = UsageReport(
             org_id=org_id,

@@ -6,11 +6,17 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from agent_platform.shared.exceptions import (
+    ToolParameterError,
+)
 from agent_platform.shared.logging import get_logger
 from agent_platform.shared.models import AuditEntry, PolicyDecision, _new_id
-from agent_platform.shared.validation import ValidationError
 
 log = get_logger()
+
+# Maximum parameter value size to prevent abuse
+_MAX_PARAM_STR_LENGTH = 10_000
+_MAX_PARAM_COUNT = 50
 
 
 @dataclass
@@ -28,9 +34,29 @@ class ToolCallResult:
     success: bool
     result: Any = None
     error: str | None = None
+    error_type: str | None = None
     tokens_used: int = 0
     latency_ms: int = 0
     audit_entry: AuditEntry | None = None
+
+
+def _validate_parameters(parameters: dict[str, Any]) -> None:
+    """Validate tool call parameters to prevent injection and abuse."""
+    if len(parameters) > _MAX_PARAM_COUNT:
+        raise ToolParameterError(
+            f"too many parameters: {len(parameters)} exceeds limit of {_MAX_PARAM_COUNT}"
+        )
+
+    for key, value in parameters.items():
+        if not isinstance(key, str):
+            raise ToolParameterError(f"parameter key must be string, got {type(key).__name__}")
+        if len(key) > 256:
+            raise ToolParameterError(f"parameter key too long: {len(key)} chars")
+        if isinstance(value, str) and len(value) > _MAX_PARAM_STR_LENGTH:
+            raise ToolParameterError(
+                f"parameter '{key}' value too long: {len(value)} chars "
+                f"(max {_MAX_PARAM_STR_LENGTH})"
+            )
 
 
 class MCPAuthorizationProxy:
@@ -42,33 +68,38 @@ class MCPAuthorizationProxy:
         budget_checker: Callable[[str, str, int], tuple[bool, int, str]],
         usage_reporter: Callable[..., int],
         audit_logger: Callable[[AuditEntry], None] | None = None,
-        default_estimated_tokens: int = 1000,
-        tool_timeout_seconds: int = 300,
     ) -> None:
         self._check_policy = policy_checker
         self._check_budget = budget_checker
         self._report_usage = usage_reporter
         self._log_audit = audit_logger or self._default_audit
         self._tool_registry: dict[str, Callable] = {}
-        self._tool_schemas: dict[str, dict[str, Any]] = {}
-        self._default_estimated_tokens = default_estimated_tokens
-        self._tool_timeout = tool_timeout_seconds
 
-    def register_tool(self, name: str, handler: Callable, schema: dict[str, Any] | None = None) -> None:
+    def register_tool(self, name: str, handler: Callable) -> None:
         """Register an MCP tool handler."""
         self._tool_registry[name] = handler
-        if schema:
-            self._tool_schemas[name] = schema
         log.info("tool_registered", tool_name=name)
 
     def execute(self, request: ToolCallRequest) -> ToolCallResult:
         """Execute a tool call with full policy + budget enforcement."""
         start = time.monotonic()
 
+        # 0. Validate parameters
+        try:
+            _validate_parameters(request.parameters)
+        except ToolParameterError as e:
+            audit = self._create_audit(request, "denied", str(e), 0, 0)
+            self._log_audit(audit)
+            return ToolCallResult(
+                success=False,
+                error=str(e),
+                error_type="ToolParameterError",
+                audit_entry=audit,
+            )
+
         # 1. Policy check
-        estimated = self._default_estimated_tokens
         policy_decision = self._check_policy(
-            request.org_id, request.agent_id, request.tool_name, estimated
+            request.org_id, request.agent_id, request.tool_name, 0
         )
         if not policy_decision.allowed:
             audit = self._create_audit(request, "denied", policy_decision.reason, 0, 0)
@@ -76,12 +107,13 @@ class MCPAuthorizationProxy:
             return ToolCallResult(
                 success=False,
                 error=f"policy denied: {policy_decision.reason}",
+                error_type="PolicyViolationError",
                 audit_entry=audit,
             )
 
         # 2. Budget pre-flight
         budget_ok, remaining, budget_reason = self._check_budget(
-            request.org_id, request.agent_id, estimated
+            request.org_id, request.agent_id, 0
         )
         if not budget_ok:
             audit = self._create_audit(request, "denied", budget_reason, 0, 0)
@@ -89,6 +121,7 @@ class MCPAuthorizationProxy:
             return ToolCallResult(
                 success=False,
                 error=f"budget denied: {budget_reason}",
+                error_type="BudgetExhaustedError",
                 audit_entry=audit,
             )
 
@@ -102,24 +135,9 @@ class MCPAuthorizationProxy:
             return ToolCallResult(
                 success=False,
                 error=f"tool '{request.tool_name}' not registered",
+                error_type="ToolNotFoundError",
                 audit_entry=audit,
             )
-
-        # Validate parameters against schema if available
-        schema = self._tool_schemas.get(request.tool_name)
-        if schema:
-            allowed_params = set(schema.keys())
-            unknown_params = set(request.parameters.keys()) - allowed_params
-            if unknown_params:
-                audit = self._create_audit(
-                    request, "denied", f"unknown parameters: {unknown_params}", 0, 0
-                )
-                self._log_audit(audit)
-                return ToolCallResult(
-                    success=False,
-                    error=f"unknown parameters: {unknown_params}",
-                    audit_entry=audit,
-                )
 
         try:
             result = handler(**request.parameters)
@@ -148,11 +166,21 @@ class MCPAuthorizationProxy:
 
         except Exception as e:
             latency = int((time.monotonic() - start) * 1000)
+            error_type = type(e).__name__
+            log.error(
+                "tool_execution_failed",
+                tool_name=request.tool_name,
+                error_type=error_type,
+                error=str(e),
+                agent_id=request.agent_id,
+                org_id=request.org_id,
+            )
             audit = self._create_audit(request, "failed", str(e), latency, 0)
             self._log_audit(audit)
             return ToolCallResult(
                 success=False,
                 error=str(e),
+                error_type=error_type,
                 latency_ms=latency,
                 audit_entry=audit,
             )
@@ -165,6 +193,8 @@ class MCPAuthorizationProxy:
         latency_ms: int,
         tokens_used: int,
     ) -> AuditEntry:
+        # Redact parameter values in audit (log keys and types only)
+        safe_params = {k: type(v).__name__ for k, v in request.parameters.items()}
         return AuditEntry(
             org_id=request.org_id,
             agent_id=request.agent_id,
@@ -172,7 +202,7 @@ class MCPAuthorizationProxy:
             execution_id=request.execution_id,
             action="tool_call",
             tool_name=request.tool_name,
-            parameters=request.parameters,
+            parameters=safe_params,
             result=result,
             reason=reason,
             latency_ms=latency_ms,

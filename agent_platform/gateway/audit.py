@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from collections import deque
 from typing import Any
 
 from agent_platform.shared.logging import get_logger
@@ -10,22 +11,29 @@ from agent_platform.shared.models import AuditEntry
 
 log = get_logger()
 
+# Default maximum entries before oldest are evicted
+_DEFAULT_MAX_ENTRIES = 100_000
+
 
 class AuditLog:
-    """Append-only audit log with query support.
+    """Append-only audit log with query support and bounded memory.
 
+    Uses a deque with maxlen to prevent unbounded memory growth.
     In production, this would write to an immutable store (e.g., append-only
     Postgres table, S3 + Athena, or a dedicated audit service).
     """
 
-    def __init__(self) -> None:
-        self._entries: list[AuditEntry] = []
+    def __init__(self, max_entries: int = _DEFAULT_MAX_ENTRIES) -> None:
+        self._entries: deque[AuditEntry] = deque(maxlen=max_entries)
+        self._max_entries = max_entries
+        self._total_appended: int = 0  # Lifetime counter (never resets)
         self._lock = threading.RLock()
 
     def append(self, entry: AuditEntry) -> None:
-        """Append an audit entry. Immutable — entries cannot be modified or deleted."""
+        """Append an audit entry. Oldest entries are evicted when at capacity."""
         with self._lock:
             self._entries.append(entry)
+            self._total_appended += 1
         log.info(
             "audit_logged",
             entry_id=entry.entry_id,
@@ -61,7 +69,7 @@ class AuditLog:
             return results
 
     def get_delegation_chain(self, execution_id: str) -> list[AuditEntry]:
-        """Get full delegation chain for an execution (user → agent → tools)."""
+        """Get full delegation chain for an execution (user -> agent -> tools)."""
         with self._lock:
             return [
                 e for e in self._entries if e.execution_id == execution_id
@@ -71,3 +79,14 @@ class AuditLog:
     def count(self) -> int:
         with self._lock:
             return len(self._entries)
+
+    @property
+    def total_appended(self) -> int:
+        """Lifetime count of all entries ever appended (including evicted)."""
+        with self._lock:
+            return self._total_appended
+
+    @property
+    def is_at_capacity(self) -> bool:
+        with self._lock:
+            return len(self._entries) >= self._max_entries

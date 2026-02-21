@@ -1,8 +1,9 @@
-"""Execution orchestrator — validate → policy → budget → LLM → tool → report."""
+"""Execution orchestrator — validate -> policy -> budget -> LLM -> tool -> report."""
 
 from __future__ import annotations
 
 import time
+import traceback
 from typing import Any
 
 from agent_platform.execution.llm import BaseLLM, LLMRequest
@@ -10,6 +11,12 @@ from agent_platform.execution.memory import BaseMemory, InMemoryStorage
 from agent_platform.execution.tools import ToolRegistry
 from agent_platform.gateway.audit import AuditLog
 from agent_platform.gateway.mcp_proxy import MCPAuthorizationProxy, ToolCallRequest
+from agent_platform.shared.exceptions import (
+    AgentNotFoundError,
+    AgentPlatformError,
+    BudgetExhaustedError,
+    PolicyNotFoundError,
+)
 from agent_platform.shared.logging import bind_context, clear_context, get_logger
 from agent_platform.shared.models import (
     AuditEntry,
@@ -24,8 +31,8 @@ log = get_logger()
 class ExecutionRuntime:
     """Stateless execution orchestrator.
 
-    Flow: validate agent → check policy → check budget → call LLM →
-          if tool_call, validate permission → execute tool → return result →
+    Flow: validate agent -> check policy -> check budget -> call LLM ->
+          if tool_call, validate permission -> execute tool -> return result ->
           report usage.
     """
 
@@ -72,15 +79,35 @@ class ExecutionRuntime:
 
         try:
             return self._execute_inner(request, execution_id, start)
-        except Exception as e:
+        except AgentPlatformError as e:
+            # Known platform errors — log with type and return structured error
             duration = int((time.monotonic() - start) * 1000)
-            log.error("execution_failed", error=str(e))
+            error_type = type(e).__name__
+            log.error("execution_failed", error_type=error_type, error=str(e))
             return ExecutionResponse(
                 execution_id=execution_id,
                 agent_id=request.agent_id,
                 org_id=request.org_id,
                 success=False,
+                error=f"[{error_type}] {e}",
+                duration_ms=duration,
+            )
+        except Exception as e:
+            # Unknown errors — log with full traceback
+            duration = int((time.monotonic() - start) * 1000)
+            error_type = type(e).__name__
+            log.error(
+                "execution_failed_unexpected",
+                error_type=error_type,
                 error=str(e),
+                traceback=traceback.format_exc(),
+            )
+            return ExecutionResponse(
+                execution_id=execution_id,
+                agent_id=request.agent_id,
+                org_id=request.org_id,
+                success=False,
+                error=f"[{error_type}] {e}",
                 duration_ms=duration,
             )
         finally:
@@ -97,23 +124,15 @@ class ExecutionRuntime:
         if agent is None:
             agent = self._agents.get_by_id(request.agent_id)
         if agent is None or not agent.active:
-            return ExecutionResponse(
-                execution_id=execution_id,
-                agent_id=request.agent_id,
-                org_id=request.org_id,
-                success=False,
-                error="agent not found or inactive",
+            raise AgentNotFoundError(
+                f"agent '{request.agent_id}' not found or inactive in org '{request.org_id}'"
             )
 
         # 2. Check policy exists
         policy = self._policies.get_effective_policy(request.org_id, request.agent_id)
         if policy is None:
-            return ExecutionResponse(
-                execution_id=execution_id,
-                agent_id=request.agent_id,
-                org_id=request.org_id,
-                success=False,
-                error="no policy configured",
+            raise PolicyNotFoundError(
+                f"no policy configured for org '{request.org_id}' agent '{request.agent_id}'"
             )
 
         # 3. Budget pre-flight
@@ -121,13 +140,7 @@ class ExecutionRuntime:
             request.org_id, request.agent_id, policy.token_limit
         )
         if not budget_ok:
-            return ExecutionResponse(
-                execution_id=execution_id,
-                agent_id=request.agent_id,
-                org_id=request.org_id,
-                success=False,
-                error=f"budget check failed: {reason}",
-            )
+            raise BudgetExhaustedError(reason, tokens_remaining=remaining)
 
         # 4. Call LLM
         llm_request = LLMRequest(
@@ -152,8 +165,9 @@ class ExecutionRuntime:
             tool_call_results.append({
                 "tool_name": tc.tool_name,
                 "parameters": tc.parameters,
-                "result": str(tool_result.result) if tool_result.success else None,
+                "result": tool_result.result if tool_result.success else None,
                 "error": tool_result.error,
+                "error_type": tool_result.error_type,
                 "success": tool_result.success,
                 "latency_ms": tool_result.latency_ms,
             })

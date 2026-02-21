@@ -7,6 +7,7 @@ from agent_platform.execution.tools import (
     ToolRegistry,
     _is_ssrf_safe,
 )
+from agent_platform.shared.exceptions import ToolNotFoundError
 
 
 class TestToolRegistry:
@@ -35,7 +36,7 @@ class TestToolRegistry:
 
     def test_execute_nonexistent_raises(self):
         reg = ToolRegistry()
-        with pytest.raises(ValueError, match="not registered"):
+        with pytest.raises(ToolNotFoundError, match="not registered"):
             reg.execute("nonexistent")
 
     def test_count(self):

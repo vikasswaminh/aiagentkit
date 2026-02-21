@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 from concurrent import futures
 from datetime import datetime
 from typing import Any
@@ -42,7 +43,7 @@ def _dict_to_struct(d: dict[str, Any]) -> struct_pb2.Struct:
 
 
 class APIKeyInterceptor(grpc.ServerInterceptor):
-    """Validates AP_API_KEY on every request when configured."""
+    """Validates AP_API_KEY on every request using timing-safe comparison."""
 
     def __init__(self, api_key: str) -> None:
         self._api_key = api_key
@@ -50,7 +51,11 @@ class APIKeyInterceptor(grpc.ServerInterceptor):
     def intercept_service(self, continuation, handler_call_details):
         metadata = dict(handler_call_details.invocation_metadata or [])
         provided = metadata.get("x-api-key", "")
-        if provided != self._api_key:
+        if not secrets.compare_digest(provided, self._api_key):
+            log.warning(
+                "auth_failed",
+                method=handler_call_details.method,
+            )
             def _abort(request, context):
                 context.abort(grpc.StatusCode.UNAUTHENTICATED, "invalid API key")
                 return None
@@ -365,8 +370,19 @@ class ControlPlaneServicer(pb2_grpc.ControlPlaneServicer):
 def create_control_plane_server(
     port: int = 50051,
     max_workers: int = 10,
+    tls_cert_path: str | None = None,
+    tls_key_path: str | None = None,
+    require_api_key: bool = True,
 ) -> grpc.Server:
-    """Create and configure the control plane gRPC server."""
+    """Create and configure the control plane gRPC server.
+
+    Args:
+        port: Port to listen on.
+        max_workers: Max gRPC thread pool workers.
+        tls_cert_path: Path to TLS certificate PEM file.
+        tls_key_path: Path to TLS private key PEM file.
+        require_api_key: If True and AP_API_KEY is not set, server refuses to start.
+    """
     org_service = OrgService()
     agent_service = AgentService()
     policy_service = PolicyService()
@@ -386,13 +402,35 @@ def create_control_plane_server(
     if api_key:
         interceptors.append(APIKeyInterceptor(api_key))
         log.info("api_key_auth_enabled")
+    elif require_api_key:
+        log.error("api_key_required", msg="Set AP_API_KEY environment variable or pass require_api_key=False")
+        raise RuntimeError(
+            "AP_API_KEY environment variable is required. "
+            "Set it or pass require_api_key=False for development."
+        )
+    else:
+        log.warning("api_key_auth_disabled", msg="Running without API key authentication (development mode)")
 
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=max_workers),
         interceptors=interceptors,
     )
     pb2_grpc.add_ControlPlaneServicer_to_server(servicer, server)
-    server.add_insecure_port(f"[::]:{port}")
+
+    # TLS configuration
+    tls_cert = tls_cert_path or os.environ.get("AP_TLS_CERT", "")
+    tls_key = tls_key_path or os.environ.get("AP_TLS_KEY", "")
+    if tls_cert and tls_key:
+        with open(tls_cert, "rb") as f:
+            cert_pem = f.read()
+        with open(tls_key, "rb") as f:
+            key_pem = f.read()
+        credentials = grpc.ssl_server_credentials([(key_pem, cert_pem)])
+        server.add_secure_port(f"[::]:{port}", credentials)
+        log.info("tls_enabled", cert=tls_cert)
+    else:
+        server.add_insecure_port(f"[::]:{port}")
+        log.warning("tls_disabled", msg="Running without TLS (development mode)")
 
     log.info("control_plane_server_created", port=port, max_workers=max_workers)
     return server
@@ -401,7 +439,9 @@ def create_control_plane_server(
 def serve(port: int = 50051) -> None:
     """Start the control plane gRPC server."""
     configure_logging()
-    server = create_control_plane_server(port=port)
+    # In development, allow running without API key
+    require_api_key = os.environ.get("AP_REQUIRE_API_KEY", "false").lower() == "true"
+    server = create_control_plane_server(port=port, require_api_key=require_api_key)
     server.start()
     log.info("control_plane_server_started", port=port)
     server.wait_for_termination()

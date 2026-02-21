@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlparse
 
+from agent_platform.shared.exceptions import SSRFBlockedError, ToolNotFoundError
 from agent_platform.shared.logging import get_logger
 
 log = get_logger()
@@ -54,7 +55,7 @@ class ToolRegistry:
     def execute(self, name: str, **kwargs: Any) -> Any:
         tool = self._tools.get(name)
         if tool is None:
-            raise ValueError(f"tool '{name}' not registered")
+            raise ToolNotFoundError(f"tool '{name}' not registered")
         return tool.execute(**kwargs)
 
     @property
@@ -93,9 +94,9 @@ class HTTPTool(BaseTool):
 
     def execute(self, url: str = "", method: str = "GET", **kwargs: Any) -> Any:
         if not url:
-            raise ValueError("url parameter is required")
+            raise ToolNotFoundError("url parameter is required")
         if not _is_ssrf_safe(url):
-            raise ValueError(f"URL blocked by SSRF protection: {url}")
+            raise SSRFBlockedError(f"URL blocked by SSRF protection: {url}")
 
         import httpx
 

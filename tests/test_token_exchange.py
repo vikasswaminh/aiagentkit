@@ -13,12 +13,33 @@ class TestTokenExchangeService:
         assert token.tool_name == "search"
         assert token.agent_id == "agent-1"
 
+    def test_exchange_produces_jwt(self):
+        svc = TokenExchangeService()
+        token = svc.exchange("parent-1", "agent-1", "org-1", "search")
+        assert token.jwt_token  # Must produce a signed JWT
+        assert token.jwt_token.count(".") == 2  # JWTs have 3 parts
+
     def test_validate_valid_token(self):
         svc = TokenExchangeService()
         token = svc.exchange("parent-1", "agent-1", "org-1", "search")
         validated = svc.validate(token.token_id)
         assert validated is not None
         assert validated.token_id == token.token_id
+
+    def test_validate_jwt_directly(self):
+        svc = TokenExchangeService()
+        token = svc.exchange("parent-1", "agent-1", "org-1", "search")
+        claims = svc.validate_jwt(token.jwt_token)
+        assert claims is not None
+        assert claims["sub"] == "agent-1"
+        assert claims["tool_name"] == "search"
+        assert claims["org_id"] == "org-1"
+
+    def test_validate_tampered_jwt_fails(self):
+        svc = TokenExchangeService()
+        token = svc.exchange("parent-1", "agent-1", "org-1", "search")
+        tampered = token.jwt_token + "tampered"
+        assert svc.validate_jwt(tampered) is None
 
     def test_validate_invalid_token(self):
         svc = TokenExchangeService()
@@ -72,3 +93,16 @@ class TestTokenExchangeService:
             scopes=["read", "write"],
         )
         assert token.scopes == ["read", "write"]
+
+    def test_public_key_available(self):
+        svc = TokenExchangeService()
+        assert svc.public_key_pem
+        assert b"PUBLIC KEY" in svc.public_key_pem
+
+    def test_hs256_mode(self):
+        svc = TokenExchangeService(algorithm="HS256")
+        token = svc.exchange("p1", "agent-1", "org-1", "search")
+        assert token.jwt_token
+        claims = svc.validate_jwt(token.jwt_token)
+        assert claims is not None
+        assert claims["sub"] == "agent-1"

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Any
 
+from agent_platform.shared.exceptions import ServiceUnavailableError
 from agent_platform.shared.logging import get_logger
 from agent_platform.shared.models import (
     Policy,
@@ -60,6 +62,15 @@ class PolicyService:
             policy = replace(policy, updated_at=datetime.now(timezone.utc))
 
         self._store.put(key, policy)
+
+        # Push to OPA if adapter is configured
+        if self._opa:
+            policy_name = f"agent_platform.policy.{org_id.replace('-', '_')}"
+            if agent_id:
+                policy_name += f".{agent_id.replace('-', '_')}"
+            rego = self._opa.policy_to_rego(policy)
+            self._opa.push_policy(policy_name, rego)
+
         scope = f"agent:{agent_id}" if agent_id else "org"
         log.info("policy_set", org_id=org_id, scope=scope, policy_id=policy.policy_id)
         return policy
@@ -85,6 +96,20 @@ class PolicyService:
         context: dict[str, Any] | None = None,
     ) -> PolicyDecision:
         """Evaluate whether an action is allowed by policy."""
+        # If OPA is configured, delegate to OPA
+        if self._opa:
+            policy_name = f"agent_platform.policy.{org_id.replace('-', '_')}"
+            input_data = {
+                "org_id": org_id,
+                "agent_id": agent_id,
+                "tool_name": tool_name,
+                "estimated_tokens": estimated_tokens,
+            }
+            if context:
+                input_data["context"] = context
+            return self._opa.evaluate(policy_name, input_data)
+
+        # Local evaluation
         policy = self.get_effective_policy(org_id, agent_id)
 
         if policy is None:
@@ -168,11 +193,25 @@ class PolicyService:
 
 
 class OPAAdapter:
-    """Adapter to translate governance rules to OPA Rego and evaluate via REST."""
+    """Adapter to translate governance rules to OPA Rego and evaluate via REST.
 
-    def __init__(self, opa_url: str = "http://localhost:8181") -> None:
+    Includes a circuit breaker: after `failure_threshold` consecutive failures,
+    the circuit opens for `reset_timeout_seconds` before allowing another attempt.
+    """
+
+    def __init__(
+        self,
+        opa_url: str = "http://localhost:8181",
+        failure_threshold: int = 3,
+        reset_timeout_seconds: float = 30.0,
+    ) -> None:
         self._opa_url = opa_url
         self._client: Any = None
+        # Circuit breaker state
+        self._failure_count = 0
+        self._failure_threshold = failure_threshold
+        self._reset_timeout = reset_timeout_seconds
+        self._circuit_open_until: float = 0.0
 
     def _get_client(self) -> Any:
         """Lazily create and reuse a synchronous httpx client."""
@@ -180,6 +219,31 @@ class OPAAdapter:
             import httpx
             self._client = httpx.Client(timeout=10.0)
         return self._client
+
+    def _check_circuit(self) -> None:
+        """Raise ServiceUnavailableError if circuit breaker is open."""
+        if self._failure_count >= self._failure_threshold:
+            if time.time() < self._circuit_open_until:
+                raise ServiceUnavailableError(
+                    "OPA",
+                    f"circuit breaker open after {self._failure_count} failures, "
+                    f"retry after {self._circuit_open_until - time.time():.0f}s",
+                )
+            # Reset for half-open state
+            self._failure_count = 0
+
+    def _record_failure(self) -> None:
+        self._failure_count += 1
+        if self._failure_count >= self._failure_threshold:
+            self._circuit_open_until = time.time() + self._reset_timeout
+            log.error(
+                "opa_circuit_breaker_opened",
+                failure_count=self._failure_count,
+                reset_after_seconds=self._reset_timeout,
+            )
+
+    def _record_success(self) -> None:
+        self._failure_count = 0
 
     def policy_to_rego(self, policy: Policy) -> str:
         """Generate Rego policy from a Policy dataclass."""
@@ -230,35 +294,56 @@ class OPAAdapter:
 
     def push_policy(self, policy_name: str, rego_content: str) -> bool:
         """Push a Rego policy to OPA via REST API."""
+        self._check_circuit()
         client = self._get_client()
         url = f"{self._opa_url}/v1/policies/{policy_name}"
-        resp = client.put(
-            url,
-            content=rego_content,
-            headers={"Content-Type": "text/plain"},
-        )
-        return resp.status_code == 200
+        try:
+            resp = client.put(
+                url,
+                content=rego_content,
+                headers={"Content-Type": "text/plain"},
+            )
+            if resp.status_code == 200:
+                self._record_success()
+                return True
+            self._record_failure()
+            log.error("opa_push_failed", policy=policy_name, status=resp.status_code)
+            return False
+        except Exception as e:
+            self._record_failure()
+            log.error("opa_push_error", policy=policy_name, error=str(e))
+            raise ServiceUnavailableError("OPA", str(e)) from e
 
     def evaluate(
         self,
         policy_name: str,
         input_data: dict[str, Any],
     ) -> PolicyDecision:
-        """Evaluate a policy decision via OPA REST API."""
+        """Evaluate a policy decision via OPA REST API.
+
+        Raises ServiceUnavailableError if OPA is unreachable (with circuit breaker).
+        """
+        self._check_circuit()
         client = self._get_client()
         url = f"{self._opa_url}/v1/data/{policy_name}/allow"
         try:
             resp = client.post(url, json={"input": input_data})
             if resp.status_code == 200:
+                self._record_success()
                 result = resp.json()
                 allowed = result.get("result", False)
                 return PolicyDecision(
                     allowed=allowed,
                     reason="opa_evaluation",
                 )
-        except Exception:
-            log.warning("opa_evaluation_failed", policy=policy_name)
-        return PolicyDecision(allowed=False, reason="opa_unavailable")
+            self._record_failure()
+            raise ServiceUnavailableError("OPA", f"HTTP {resp.status_code}")
+        except ServiceUnavailableError:
+            raise
+        except Exception as e:
+            self._record_failure()
+            log.error("opa_evaluation_failed", policy=policy_name, error=str(e))
+            raise ServiceUnavailableError("OPA", str(e)) from e
 
     def close(self) -> None:
         """Close the underlying HTTP client."""
