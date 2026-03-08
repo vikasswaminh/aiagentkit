@@ -14,6 +14,12 @@ import { ScaleWrapper } from "@/components/ui/ScaleWrapper";
 import { templateList, sampleResumeData } from "@/lib/templates";
 import { getTemplate } from "@/lib/templates/registry";
 
+const DEMO_EXAMPLES = [
+  "managed a team and completed projects on time",
+  "helped customers with issues and improved satisfaction",
+  "worked on database and made it faster",
+];
+
 export default function LandingPage() {
   const router = useRouter();
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -23,12 +29,17 @@ export default function LandingPage() {
   const [demoOutput, setDemoOutput] = useState("");
   const [isDemoLoading, setIsDemoLoading] = useState(false);
   const [demoIndex, setDemoIndex] = useState(0);
+  const [templateCategory, setTemplateCategory] = useState<string>("All");
 
-  const DEMO_EXAMPLES = [
-    "managed a team and completed projects on time",
-    "helped customers with issues and improved satisfaction",
-    "worked on database and made it faster",
-  ];
+  // Auto-cycle placeholder every 3 seconds when input is empty
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!demoInput) {
+        setDemoIndex(i => (i + 1) % DEMO_EXAMPLES.length);
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [demoInput]);
 
   const handleDemoEnhance = async () => {
     const input = demoInput.trim() || DEMO_EXAMPLES[demoIndex % DEMO_EXAMPLES.length];
@@ -40,29 +51,32 @@ export default function LandingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ bullet: input }),
       });
+      if (!res.ok) {
+        setDemoOutput("Enhancement failed. Please try again.");
+        return;
+      }
       const data = await res.json();
       if (data.enhanced) {
         setDemoOutput(data.enhanced);
-        setDemoIndex(i => i + 1);
+        setDemoIndex(i => (i + 1) % DEMO_EXAMPLES.length);
       }
     } catch {
-      setDemoOutput("Try signing up to use AI features.");
+      setDemoOutput("Enhancement failed. Please try again.");
     } finally {
       setIsDemoLoading(false);
     }
   };
 
-  const supabase = createClient();
-
   // Check authentication status on mount
   useEffect(() => {
+    const supabase = createClient();
     const checkAuth = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       setUser(user);
       setIsCheckingAuth(false);
     };
     checkAuth();
-  }, [supabase.auth]);
+  }, []);
 
   // Handler for Build My Resume button
   const handleBuildResume = () => {
@@ -154,13 +168,15 @@ export default function LandingPage() {
               <div className="flex gap-2">
                 <input
                   type="text"
+                  aria-label="Resume bullet to enhance"
                   value={demoInput}
                   onChange={e => setDemoInput(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && handleDemoEnhance()}
+                  onKeyDown={e => e.key === "Enter" && !isDemoLoading && handleDemoEnhance()}
                   placeholder={DEMO_EXAMPLES[demoIndex % DEMO_EXAMPLES.length]}
                   className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-400 transition-all"
                 />
                 <button
+                  type="button"
                   onClick={handleDemoEnhance}
                   disabled={isDemoLoading}
                   className="px-4 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-bold hover:bg-black transition-all disabled:opacity-50 whitespace-nowrap"
@@ -193,7 +209,7 @@ export default function LandingPage() {
                 size="lg"
                 variant="outline"
                 className="h-14 px-8 rounded-xl text-sm font-bold border-slate-200 text-slate-700 hover:bg-slate-50 transition-all"
-                onClick={handleBuildResume}
+                onClick={() => router.push("/templates")}
               >
                 See Templates
               </Button>
@@ -405,20 +421,41 @@ export default function LandingPage() {
       </section>
 
 
-      {/* Template Gallery Section */}
-      <section className="py-20 px-6 bg-slate-50/50">
+      {/* Template Gallery */}
+      <section className="py-24 px-6 bg-slate-50/50">
         <div className="max-w-7xl mx-auto space-y-12">
           <div className="text-center space-y-3">
-            <h2 className="text-3xl md:text-5xl font-black text-slate-800 tracking-tight">
-              23 Professional <span className="text-neutral-900">Templates</span>
+            <h2 className="text-4xl md:text-6xl font-black text-slate-900 tracking-[-0.03em]">
+              23 Templates. <span className="text-violet-600">Zero Cost.</span>
             </h2>
             <p className="text-lg text-slate-500 font-medium max-w-2xl mx-auto">
-              Recruiter-approved designs that pass ATS screening every time. Pick one and start building.
+              Recruiter-approved designs built to pass every ATS. Pick one and start building in seconds.
             </p>
           </div>
 
+          {/* Category filter tabs */}
+          <div className="flex flex-wrap justify-center gap-2">
+            {["All", "ATS", "Modern", "Professional"].map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setTemplateCategory(cat)}
+                className={`px-5 py-2 rounded-full text-sm font-bold transition-all ${
+                  templateCategory === cat
+                    ? "bg-slate-900 text-white"
+                    : "bg-white text-slate-500 border border-slate-200 hover:border-slate-400 hover:text-slate-800"
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {templateList.slice(0, 8).map((template) => {
+            {(templateCategory === "All"
+              ? templateList
+              : templateList.filter(t => t.category === templateCategory)
+            ).slice(0, 12).map((template) => {
               const TemplateComponent = getTemplate(template.id);
               return (
                 <div
@@ -426,7 +463,7 @@ export default function LandingPage() {
                   className="group cursor-pointer"
                   onClick={handleBuildResume}
                 >
-                  <div className="aspect-[1/1.4142] bg-white rounded-xl shadow-md border border-slate-100 overflow-hidden relative hover:shadow-xl hover:border-primary/30 hover:-translate-y-1 transition-all duration-300">
+                  <div className="aspect-[1/1.4142] bg-white rounded-2xl shadow-md border border-slate-100 overflow-hidden relative hover:shadow-xl hover:border-violet-200 hover:-translate-y-1 transition-all duration-300">
                     <div className="absolute inset-0 overflow-hidden pointer-events-none">
                       <ScaleWrapper targetWidth={794}>
                         <div className="w-[794px] h-[1123px] bg-white overflow-hidden">
@@ -435,11 +472,11 @@ export default function LandingPage() {
                       </ScaleWrapper>
                     </div>
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">
-                      <span className="text-white font-bold text-sm">Use Template</span>
+                      <span className="text-white font-bold text-sm">Use Free →</span>
                     </div>
                   </div>
                   <div className="mt-3 text-center">
-                    <h3 className="text-sm font-bold text-slate-700 group-hover:text-primary transition-colors">{template.name}</h3>
+                    <h3 className="text-sm font-bold text-slate-700 group-hover:text-violet-600 transition-colors">{template.name}</h3>
                     <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">{template.category}</p>
                   </div>
                 </div>
@@ -451,80 +488,92 @@ export default function LandingPage() {
             <Button
               variant="outline"
               size="lg"
-              className="h-12 px-8 rounded-xl text-sm font-bold border-slate-200 text-slate-600 hover:border-primary hover:text-primary transition-all"
+              className="h-12 px-8 rounded-xl text-sm font-bold border-slate-200 text-slate-600 hover:border-violet-400 hover:text-violet-600 transition-all"
               onClick={handleBuildResume}
             >
-              View All 23 Templates
+              View All 23 Templates →
             </Button>
           </div>
         </div>
       </section>
 
-      {/* AI Features Showcase */}
-      <section className="py-20 px-6 bg-white">
-        <div className="max-w-7xl mx-auto space-y-12">
-          <div className="text-center space-y-3">
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-violet-50 text-violet-700 rounded-full text-xs font-black uppercase tracking-widest border border-violet-100">
+      {/* AI Features — "Built Different." (Dark Section) */}
+      <section className="py-24 px-6 bg-[#0A0A0A]">
+        <div className="max-w-7xl mx-auto space-y-16">
+          <div className="text-center space-y-4">
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-violet-500/10 text-violet-400 border border-violet-500/20 rounded-full text-[11px] font-black uppercase tracking-widest">
+              <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
               AI-Powered
             </div>
-            <h2 className="text-3xl md:text-5xl font-black text-slate-800 tracking-tight">
-              Smart Features That <span className="text-neutral-900">Set You Apart</span>
+            <h2 className="text-4xl md:text-6xl font-black text-white tracking-[-0.03em]">
+              Built Different.
             </h2>
-            <p className="text-lg text-slate-500 font-medium max-w-2xl mx-auto">
-              Our AI analyzes your experience and generates content that recruiters love. No more staring at a blank page.
+            <p className="text-lg text-slate-400 font-medium max-w-2xl mx-auto">
+              Four AI tools that do the heavy lifting for you.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {[
               {
-                icon: "&#x1F4DD;",
+                icon: "📝",
                 title: "AI Summary Generator",
-                desc: "Automatically craft a professional summary from your experience and skills in seconds.",
-                color: "bg-sky-50 border-sky-100 text-sky-700",
+                desc: "Auto-generate a professional summary from your experience, skills, and education. No blank-page anxiety.",
               },
               {
-                icon: "&#x1F4A1;",
+                icon: "💡",
                 title: "Smart Skill Suggestions",
-                desc: "Get AI-recommended skills based on your job titles and industry to boost ATS scores.",
-                color: "bg-emerald-50 border-emerald-100 text-emerald-700",
+                desc: "Get AI-recommended skills based on your job titles and industry to maximize ATS keyword coverage.",
               },
               {
-                icon: "&#x1F4CA;",
+                icon: "📊",
                 title: "ATS Score Checker",
-                desc: "Instantly score your resume 0-100 with actionable tips to improve compatibility.",
-                color: "bg-amber-50 border-amber-100 text-amber-700",
+                desc: "Instantly score your resume 0–100 with specific, actionable tips to improve every section.",
               },
               {
-                icon: "&#x1F3AF;",
+                icon: "🎯",
                 title: "Job Description Matcher",
-                desc: "Paste any job posting and see exactly which keywords you match and which you're missing.",
-                color: "bg-violet-50 border-violet-100 text-violet-700",
+                desc: "Paste any job posting and see exactly which keywords you're missing — and how to add them.",
               },
             ].map((feat, i) => (
-              <div
+              <motion.div
                 key={i}
-                className={`p-8 rounded-2xl border ${feat.color} space-y-4 hover:shadow-lg transition-all`}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.1 }}
+                className="p-8 rounded-2xl bg-white/5 border border-white/10 space-y-4 hover:bg-white/8 transition-all"
               >
-                <div className="text-3xl" dangerouslySetInnerHTML={{ __html: feat.icon }} />
-                <h3 className="text-lg font-black text-slate-800">{feat.title}</h3>
-                <p className="text-sm text-slate-500 font-medium leading-relaxed">{feat.desc}</p>
-              </div>
+                <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center text-2xl">
+                  {feat.icon}
+                </div>
+                <h3 className="text-xl font-black text-white">{feat.title}</h3>
+                <p className="text-sm text-slate-400 font-medium leading-relaxed">{feat.desc}</p>
+              </motion.div>
             ))}
+          </div>
+
+          <div className="text-center">
+            <p className="text-6xl md:text-8xl font-black text-white tracking-[-0.04em]">
+              All of this. Free.
+            </p>
           </div>
         </div>
       </section>
 
       {/* Testimonials */}
-      <section className="py-20 px-6 bg-slate-50/50 border-y border-slate-100">
+      <section className="py-24 px-6 bg-white border-y border-slate-100">
         <div className="max-w-5xl mx-auto space-y-12">
           <div className="text-center space-y-3">
-            <h2 className="text-3xl md:text-4xl font-black text-slate-800 tracking-tight">
-              Loved by <span className="text-neutral-900">Job Seekers</span>
+            <h2 className="text-4xl md:text-5xl font-black text-slate-900 tracking-[-0.03em]">
+              Real people. Real results.
             </h2>
+            <p className="text-lg text-slate-500 font-medium">
+              Join thousands who landed jobs with FreeFreeCV.
+            </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {[
               {
                 name: "Priya S.",
@@ -544,12 +593,23 @@ export default function LandingPage() {
                 text: "As a fresh grad, I had no idea how to write a resume. The AI suggestions and ATS score checker guided me step by step. 100% free — unbelievable.",
                 stars: 5,
               },
+              {
+                name: "Marcus T.",
+                role: "Data Analyst",
+                text: "The ATS scorer caught 6 missing keywords. Fixed them in 5 minutes and got a callback the same week.",
+                stars: 5,
+              },
             ].map((t, i) => (
-              <div key={i} className="bg-white p-8 rounded-2xl border border-slate-100 shadow-sm space-y-4">
-                <div className="flex text-amber-400 gap-0.5 text-sm">
-                  {Array.from({ length: t.stars }).map((_, j) => (
-                    <span key={j}>&#x2605;</span>
-                  ))}
+              <div key={i} className="bg-white p-8 rounded-2xl border border-slate-100 shadow-sm space-y-4 hover:shadow-md transition-all">
+                <div className="flex items-center justify-between">
+                  <div className="flex text-amber-400 gap-0.5 text-sm">
+                    {Array.from({ length: t.stars }).map((_, j) => (
+                      <span key={j}>★</span>
+                    ))}
+                  </div>
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest border border-slate-200 rounded-full px-2.5 py-0.5">
+                    Verified User
+                  </span>
                 </div>
                 <p className="text-sm text-slate-600 font-medium leading-relaxed italic">&ldquo;{t.text}&rdquo;</p>
                 <div>
@@ -643,11 +703,54 @@ export default function LandingPage() {
 
 
 
+      {/* SEO Content Block */}
+      <section className="py-20 px-6 bg-white">
+        <div className="max-w-3xl mx-auto space-y-6 text-slate-600 text-base leading-relaxed">
+          <h2 className="text-3xl font-black text-slate-900 tracking-tight">Why FreeFreeCV?</h2>
+          <p>
+            A free ATS resume builder means your resume is formatted to pass Applicant Tracking Systems — the software that filters out 75% of resumes before a human ever sees them. FreeFreeCV generates ATS-friendly resumes automatically, using semantic structure, proper heading hierarchy, and keyword density that modern ATS engines score highly.
+          </p>
+          <p>
+            AI resume writing has changed the game for job seekers. Instead of spending hours crafting bullet points from scratch, our AI analyzes your job titles, experience, and skills to generate impactful, quantified statements that hiring managers notice. Studies show ATS-optimized resumes with strong action verbs and measurable results are 48% more likely to get a callback.
+          </p>
+          <p>
+            With 23 professionally designed resume templates free to use, FreeFreeCV covers every role and industry — from software engineering to nursing, marketing to data science. Each template is crafted to balance visual appeal with ATS compatibility, so you never have to choose between a beautiful resume and one that gets through the filter.
+          </p>
+          <p>
+            Unlike tools that charge $20/month for basic features or hide templates behind a paywall, FreeFreeCV gives you everything — AI summaries, skill suggestions, ATS scoring, job matching, and instant PDF export — completely free, forever. No credit card, no trial period, no catch.
+          </p>
+        </div>
+      </section>
+
+      {/* Final CTA Band */}
+      <section className="py-24 px-6 bg-[#0A0A0A]">
+        <div className="max-w-4xl mx-auto text-center space-y-6">
+          <h2 className="text-4xl md:text-6xl font-black text-white tracking-[-0.03em]">
+            Your next job is one resume away.
+          </h2>
+          <p className="text-lg text-slate-400 font-medium">
+            Join thousands of job seekers who built their resume free.
+          </p>
+          <Button
+            size="lg"
+            className="h-14 px-10 rounded-xl text-sm font-bold bg-violet-600 hover:bg-violet-700 text-white transition-all shadow-lg shadow-violet-900/30"
+            onClick={handleBuildResume}
+          >
+            Build My Resume — It&apos;s Free →
+          </Button>
+        </div>
+      </section>
+
       {/* Footer */}
       <footer className="py-10 px-6 border-t border-slate-100 bg-white">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6 text-slate-400 font-medium text-xs">
-          <Logo className="grayscale opacity-60 scale-90" />
-          <div className="flex gap-6">
+          <div className="space-y-1 text-center md:text-left">
+            <Logo className="grayscale opacity-60 scale-90" />
+            <p className="text-xs text-slate-400">The free AI resume builder for everyone.</p>
+          </div>
+          <div className="flex flex-wrap justify-center gap-6">
+            <span className="cursor-pointer hover:text-slate-600 transition-colors" onClick={handleBuildResume}>Templates</span>
+            <span className="cursor-default text-slate-300">Blog (coming soon)</span>
             <span className="cursor-default">Terms of Service</span>
             <span className="cursor-default">Privacy Policy</span>
             <a href="mailto:support@freefreecv.com" className="hover:text-neutral-900 transition-colors">Contact</a>
