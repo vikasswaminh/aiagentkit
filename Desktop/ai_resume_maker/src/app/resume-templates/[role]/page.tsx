@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
+// Skip SSG — render on demand to avoid Supabase env dependency during build
+export const dynamic = "force-dynamic";
+
 type RoleConfig = {
   slug: string;
   keyword: string;

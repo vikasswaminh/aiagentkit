@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 
+// Skip SSG — render on demand to avoid Supabase env dependency during build
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Free Resume Builder — No Sign-Up Required | FreeFreeCV",
   description:
