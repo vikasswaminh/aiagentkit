@@ -1,7 +1,11 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next'
+import createMDX from '@next/mdx'
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["pdfjs-dist"],
-};
+    pageExtensions: ['ts', 'tsx', 'md', 'mdx'],
+    serverExternalPackages: ["pdfjs-dist"],
+}
 
-export default nextConfig;
+const withMDX = createMDX()
+
+export default withMDX(nextConfig)
