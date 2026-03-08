@@ -34,16 +34,21 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Please enter at least 5 characters." }, { status: 400 });
     }
 
-    const result = await chatWithFallback(
-        [
-            {
-                role: "system",
-                content: "You are a professional resume writer. Rewrite the given resume bullet point to be more impactful using strong action verbs and quantifiable results. Return ONLY the improved bullet point — no explanation, no prefix, no quotes.",
-            },
-            { role: "user", content: bullet },
-        ],
-        { temperature: 0.7, max_tokens: 100 }
-    );
-
-    return NextResponse.json({ enhanced: result.content });
+    try {
+        const result = await chatWithFallback(
+            [
+                {
+                    role: "system",
+                    content: "You are a professional resume writer. Rewrite the given resume bullet point to be more impactful using strong action verbs and quantifiable results. Return ONLY the improved bullet point — no explanation, no prefix, no quotes.",
+                },
+                { role: "user", content: bullet },
+            ],
+            { temperature: 0.7, max_tokens: 100 }
+        );
+        return NextResponse.json({ enhanced: result.content });
+    } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error("Demo enhance failed:", msg);
+        return NextResponse.json({ error: "AI enhancement failed. Please try again." }, { status: 500 });
+    }
 }
