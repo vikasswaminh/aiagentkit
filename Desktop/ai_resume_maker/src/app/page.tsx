@@ -7,7 +7,7 @@ import { motion } from "framer-motion";
 import { Navbar } from "@/components/ui/Navbar";
 import { Logo } from "@/components/ui/Logo";
 import { ImportResumeModal } from "@/components/dashboard/ImportResumeModal";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
 import { ScaleWrapper } from "@/components/ui/ScaleWrapper";
@@ -30,6 +30,11 @@ export default function LandingPage() {
   const [isDemoLoading, setIsDemoLoading] = useState(false);
   const [demoIndex, setDemoIndex] = useState(0);
   const [templateCategory, setTemplateCategory] = useState<string>("All");
+
+  // Memoize filtered template list so getTemplate() references are stable across filter changes
+  const filteredTemplates = useMemo(() => (
+    (templateCategory === "All" ? templateList : templateList.filter(t => t.category === templateCategory)).slice(0, 12)
+  ), [templateCategory]);
 
   // Auto-cycle placeholder every 3 seconds when input is empty
   useEffect(() => {
@@ -235,7 +240,7 @@ export default function LandingPage() {
                 ))}
               </div>
               <div>
-                <div className="flex text-amber-400 gap-0.5 text-xs mb-0.5">★★★★★</div>
+                <div className="flex text-amber-400 gap-0.5 text-xs mb-0.5" aria-label="5 out of 5 stars" role="img">★★★★★</div>
                 <div className="text-xs">Trusted by <span className="text-slate-800 font-black">700+</span> job seekers</div>
               </div>
             </div>
@@ -439,6 +444,7 @@ export default function LandingPage() {
               <button
                 key={cat}
                 type="button"
+                aria-pressed={templateCategory === cat}
                 onClick={() => setTemplateCategory(cat)}
                 className={`px-5 py-2 rounded-full text-sm font-bold transition-all ${
                   templateCategory === cat
@@ -452,15 +458,13 @@ export default function LandingPage() {
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {(templateCategory === "All"
-              ? templateList
-              : templateList.filter(t => t.category === templateCategory)
-            ).slice(0, 12).map((template) => {
+            {filteredTemplates.map((template) => {
               const TemplateComponent = getTemplate(template.id);
               return (
-                <div
+                <button
                   key={template.id}
-                  className="group cursor-pointer"
+                  type="button"
+                  className="group cursor-pointer text-left"
                   onClick={handleBuildResume}
                 >
                   <div className="aspect-[1/1.4142] bg-white rounded-2xl shadow-md border border-slate-100 overflow-hidden relative hover:shadow-xl hover:border-violet-200 hover:-translate-y-1 transition-all duration-300">
@@ -479,7 +483,7 @@ export default function LandingPage() {
                     <h3 className="text-sm font-bold text-slate-700 group-hover:text-violet-600 transition-colors">{template.name}</h3>
                     <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">{template.category}</p>
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>
@@ -542,7 +546,7 @@ export default function LandingPage() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: i * 0.1 }}
-                className="p-8 rounded-2xl bg-white/5 border border-white/10 space-y-4 hover:bg-white/8 transition-all"
+                className="p-8 rounded-2xl bg-white/5 border border-white/10 space-y-4 hover:bg-white/10 transition-all"
               >
                 <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center text-2xl">
                   {feat.icon}
@@ -582,7 +586,7 @@ export default function LandingPage() {
                 stars: 5,
               },
               {
-                name: "Marcus T.",
+                name: "James R.",
                 role: "Product Manager",
                 text: "Job description matcher is a game-changer. I could see exactly what keywords I was missing and fix them before applying. Landed my dream role.",
                 stars: 5,
@@ -602,9 +606,9 @@ export default function LandingPage() {
             ].map((t, i) => (
               <div key={i} className="bg-white p-8 rounded-2xl border border-slate-100 shadow-sm space-y-4 hover:shadow-md transition-all">
                 <div className="flex items-center justify-between">
-                  <div className="flex text-amber-400 gap-0.5 text-sm">
+                  <div className="flex text-amber-400 gap-0.5 text-sm" aria-label={`${t.stars} out of 5 stars`}>
                     {Array.from({ length: t.stars }).map((_, j) => (
-                      <span key={j}>★</span>
+                      <span key={j} aria-hidden="true">★</span>
                     ))}
                   </div>
                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest border border-slate-200 rounded-full px-2.5 py-0.5">
@@ -749,10 +753,10 @@ export default function LandingPage() {
             <p className="text-xs text-slate-400">The free AI resume builder for everyone.</p>
           </div>
           <div className="flex flex-wrap justify-center gap-6">
-            <span className="cursor-pointer hover:text-slate-600 transition-colors" onClick={handleBuildResume}>Templates</span>
-            <span className="cursor-default text-slate-300">Blog (coming soon)</span>
-            <span className="cursor-default">Terms of Service</span>
-            <span className="cursor-default">Privacy Policy</span>
+            <button type="button" className="hover:text-slate-600 transition-colors" onClick={handleBuildResume}>Templates</button>
+            <span className="text-slate-300">Blog (coming soon)</span>
+            <span>Terms of Service</span>
+            <span>Privacy Policy</span>
             <a href="mailto:support@freefreecv.com" className="hover:text-neutral-900 transition-colors">Contact</a>
           </div>
           <div>© {new Date().getFullYear()} FreeFreeCV. All rights reserved.</div>
