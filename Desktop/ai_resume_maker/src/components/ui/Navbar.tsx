@@ -48,6 +48,12 @@ export const Navbar = () => {
                     Free Forever
                 </span>
                 <div className="flex items-center gap-8">
+                    <div
+                        className="hidden md:block text-neutral-600 hover:text-neutral-900 transition-colors text-sm font-medium cursor-pointer"
+                        onClick={() => router.push("/blog")}
+                    >
+                        Blog
+                    </div>
                     {!loading && (
                         user ? (
                             <div className="flex items-center gap-6">

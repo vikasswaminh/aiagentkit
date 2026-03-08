@@ -754,7 +754,7 @@ export default function LandingPage() {
           </div>
           <div className="flex flex-wrap justify-center gap-6">
             <button type="button" className="hover:text-slate-600 transition-colors" onClick={handleBuildResume}>Templates</button>
-            <span className="text-slate-300">Blog (coming soon)</span>
+            <a href="/blog" className="hover:text-slate-600 transition-colors">Blog</a>
             <span>Terms of Service</span>
             <span>Privacy Policy</span>
             <a href="mailto:support@freefreecv.com" className="hover:text-neutral-900 transition-colors">Contact</a>
