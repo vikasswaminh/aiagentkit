@@ -2,10 +2,11 @@ import OpenAI from "openai";
 
 // Model fallback chain — tried in order, last resort is openrouter/free
 // which auto-routes to whatever free models are currently available.
+// Verified working as of 2026-03-08.
 const MODEL_CHAIN = [
-    "qwen/qwen3-235b-a22b-2507:free",
-    "deepseek/deepseek-r1-0528:free",
-    "google/gemini-2.5-flash-preview:free",
+    "openai/gpt-oss-120b:free",
+    "google/gemma-3-27b-it:free",
+    "arcee-ai/trinity-large-preview:free",
     "meta-llama/llama-3.3-70b-instruct:free",
     "openrouter/free",
 ] as const;
@@ -49,7 +50,10 @@ export async function chatWithFallback(
                 max_tokens,
             });
 
-            const content = completion.choices[0]?.message?.content?.trim() || "";
+            const choiceMsg = completion.choices[0]?.message;
+            // Some models (reasoning models) put text in a "reasoning" field with content=null
+            const reasoning = (choiceMsg as unknown as Record<string, unknown>)?.reasoning;
+            const content = (choiceMsg?.content || (typeof reasoning === "string" ? reasoning : "") || "").trim();
             if (!content) {
                 lastError = new Error(`Empty response from ${model}`);
                 continue;
@@ -61,12 +65,12 @@ export async function chatWithFallback(
                 tokens: completion.usage?.total_tokens || 0,
             };
         } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : String(err);
-            console.warn(`Model ${model} failed: ${msg}`);
-            lastError = err instanceof Error ? err : new Error(msg);
+            const errMsg = err instanceof Error ? err.message : String(err);
+            console.warn(`Model ${model} failed: ${errMsg}`);
+            lastError = err instanceof Error ? err : new Error(errMsg);
 
             // Don't retry on auth errors — all models will fail
-            if (msg.includes("401") || msg.includes("403") || msg.includes("Unauthorized")) {
+            if (errMsg.includes("401") || errMsg.includes("403") || errMsg.includes("Unauthorized")) {
                 throw lastError;
             }
         }
