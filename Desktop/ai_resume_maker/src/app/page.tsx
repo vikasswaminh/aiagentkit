@@ -19,6 +19,39 @@ export default function LandingPage() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [demoInput, setDemoInput] = useState("");
+  const [demoOutput, setDemoOutput] = useState("");
+  const [isDemoLoading, setIsDemoLoading] = useState(false);
+  const [demoIndex, setDemoIndex] = useState(0);
+
+  const DEMO_EXAMPLES = [
+    "managed a team and completed projects on time",
+    "helped customers with issues and improved satisfaction",
+    "worked on database and made it faster",
+  ];
+
+  const handleDemoEnhance = async () => {
+    const input = demoInput.trim() || DEMO_EXAMPLES[demoIndex % DEMO_EXAMPLES.length];
+    setIsDemoLoading(true);
+    setDemoOutput("");
+    try {
+      const res = await fetch("/api/demo-enhance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bullet: input }),
+      });
+      const data = await res.json();
+      if (data.enhanced) {
+        setDemoOutput(data.enhanced);
+        setDemoIndex(i => i + 1);
+      }
+    } catch {
+      setDemoOutput("Try signing up to use AI features.");
+    } finally {
+      setIsDemoLoading(false);
+    }
+  };
+
   const supabase = createClient();
 
   // Check authentication status on mount
@@ -96,93 +129,99 @@ export default function LandingPage() {
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6 }}
-            className="space-y-5 pt-8 md:pt-12"
+            className="space-y-6 pt-8 md:pt-12"
           >
-            <div className="space-y-2">
-              <h1 className="text-4xl md:text-6xl font-black text-slate-800 tracking-[-0.03em] leading-tight">
-                Your AI-Powered <br />
-                <span className="text-neutral-900">Resume Builder</span>
+            {/* Free badge */}
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-violet-50 text-violet-700 border border-violet-100 rounded-full text-[11px] font-black uppercase tracking-widest">
+              <span className="w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse" />
+              100% Free · No Credit Card · No Limits
+            </div>
+
+            {/* Headline */}
+            <div className="space-y-3">
+              <h1 className="text-4xl md:text-6xl font-black text-slate-900 tracking-[-0.03em] leading-[1.05]">
+                The AI Resume Builder<br />
+                <span className="text-violet-600">That&apos;s Actually Free</span>
               </h1>
-              <p className="text-base text-slate-500 font-medium max-w-xl leading-relaxed">
-                AI-generated summaries, smart skill suggestions, ATS scoring, and job matching — all free, forever. Build a resume that lands interviews.
+              <p className="text-base text-slate-500 font-medium max-w-lg leading-relaxed">
+                AI summaries, ATS scoring, job matching, 23 templates — no paywalls, no credit card, forever.
               </p>
             </div>
 
-            <div className="flex flex-row flex-wrap gap-4 pt-2">
+            {/* Live AI Demo Widget */}
+            <div className="space-y-3 p-5 rounded-2xl bg-slate-50 border border-slate-200 max-w-lg">
+              <div className="text-[11px] font-black text-slate-400 uppercase tracking-widest">✨ Try it — no sign-up needed</div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={demoInput}
+                  onChange={e => setDemoInput(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && handleDemoEnhance()}
+                  placeholder={DEMO_EXAMPLES[demoIndex % DEMO_EXAMPLES.length]}
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-400 transition-all"
+                />
+                <button
+                  onClick={handleDemoEnhance}
+                  disabled={isDemoLoading}
+                  className="px-4 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-bold hover:bg-black transition-all disabled:opacity-50 whitespace-nowrap"
+                >
+                  {isDemoLoading ? "..." : "Enhance →"}
+                </button>
+              </div>
+              {demoOutput && (
+                <motion.div
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="p-3 rounded-xl bg-white border border-violet-100 text-sm text-slate-700 font-medium leading-relaxed"
+                >
+                  <span className="text-[10px] font-black text-violet-500 uppercase tracking-widest block mb-1">AI Enhanced</span>
+                  {demoOutput}
+                </motion.div>
+              )}
+            </div>
+
+            {/* CTAs */}
+            <div className="flex flex-row flex-wrap gap-3">
               <Button
                 size="lg"
-                className="h-14 px-10 rounded-md text-base font-semibold bg-neutral-950 hover:bg-black transition-all shadow-sm min-w-[200px] flex-1 sm:flex-none"
+                className="h-14 px-8 rounded-xl text-sm font-bold bg-slate-900 hover:bg-black transition-all shadow-sm"
                 onClick={handleBuildResume}
               >
-                Build My Resume
+                Build My Resume →
               </Button>
               <Button
                 size="lg"
                 variant="outline"
-                className="h-14 px-10 rounded-md text-base font-semibold border border-neutral-300 text-neutral-900 hover:bg-neutral-100 transition-all min-w-[200px] flex-1 sm:flex-none"
-                onClick={handleImportResume}
+                className="h-14 px-8 rounded-xl text-sm font-bold border-slate-200 text-slate-700 hover:bg-slate-50 transition-all"
+                onClick={handleBuildResume}
               >
-                Import existing resume
+                See Templates
               </Button>
             </div>
 
-            <div className="flex flex-wrap items-start gap-10 pt-4">
-              <div className="space-y-2">
-                <div className="text-4xl font-black text-neutral-900">48%</div>
-                <div className="text-sm text-slate-500 font-bold uppercase tracking-wider">Higher Hire Rate</div>
-              </div>
-              <div className="w-px h-12 bg-slate-100 hidden sm:block" />
-              <div className="space-y-2 max-w-[200px]">
-                <div className="text-4xl font-bold" style={{ color: "#FFB800" }}>12%</div>
-                <div className="text-sm text-slate-500 font-bold uppercase tracking-wider">Salary Increase</div>
-              </div>
+            {/* Stats strip */}
+            <div className="flex flex-wrap gap-6 text-sm font-bold text-slate-400">
+              {["23 Templates", "4 AI Tools", "48% Higher Hire Rate", "Always Free"].map((s, i) => (
+                <span key={i} className="flex items-center gap-1.5">
+                  <span className="w-1 h-1 rounded-full bg-slate-300" />
+                  {s}
+                </span>
+              ))}
             </div>
 
-            <div className="pt-6 flex items-center gap-4 text-sm font-medium text-slate-500">
+            {/* Social proof avatars */}
+            <div className="flex items-center gap-4 text-sm font-medium text-slate-500">
               <div className="flex -space-x-3">
                 {[1, 2, 3, 4, 5].map((i) => (
-                  <div key={i} className={`w-9 h-9 rounded-full border-[3px] border-white flex items-center justify-center text-[10px] text-white font-bold shadow-sm bg-gradient-to-br ${i === 1 ? 'from-blue-500 to-indigo-600' :
-                    i === 2 ? 'from-purple-500 to-fuchsia-600' :
-                      i === 3 ? 'from-emerald-500 to-teal-600' :
-                        i === 4 ? 'from-amber-500 to-orange-600' :
-                          'from-rose-500 to-pink-600'
-                    }`}>
+                  <div key={i} className={`w-9 h-9 rounded-full border-[3px] border-white flex items-center justify-center text-[10px] text-white font-bold shadow-sm bg-gradient-to-br ${i === 1 ? 'from-blue-500 to-indigo-600' : i === 2 ? 'from-purple-500 to-fuchsia-600' : i === 3 ? 'from-emerald-500 to-teal-600' : i === 4 ? 'from-amber-500 to-orange-600' : 'from-rose-500 to-pink-600'}`}>
                     {['JD', 'AS', 'MR', 'LK', 'TF'][i - 1]}
                   </div>
                 ))}
               </div>
               <div>
-                <div className="flex text-amber-400 gap-0.5 text-xs mb-0.5">
-                  {'★★★★★'.split('').map((s, i) => <span key={i}>{s}</span>)}
-                </div>
-                <div className="text-xs">Trusted by <span className="text-slate-800 font-black">700+</span> students</div>
+                <div className="flex text-amber-400 gap-0.5 text-xs mb-0.5">★★★★★</div>
+                <div className="text-xs">Trusted by <span className="text-slate-800 font-black">700+</span> job seekers</div>
               </div>
-            </div>
-
-            {/* Value Propositions Grid */}
-            <div className="pt-28 grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl">
-              {[
-                { icon: "🛡️", title: "ATS Proof", desc: "99% Success Rate" },
-                { icon: "⚡", title: "Fast Build", desc: "Under 10 Minutes" },
-                { icon: "💎", title: "Premium", desc: "Recruiter Approved" },
-                { icon: "🔒", title: "Secure", desc: "Data Encrypted" }
-              ].map((prop, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.4 + (i * 0.1) }}
-                  className="flex items-center gap-3 p-3.5 rounded-2xl bg-neutral-50 border border-neutral-200 hover:bg-white transition-all cursor-default group"
-                >
-                  <div className="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center text-xl group-hover:scale-110 transition-transform">
-                    {prop.icon}
-                  </div>
-                  <div>
-                    <div className="text-[11px] font-black text-slate-800 uppercase tracking-tight">{prop.title}</div>
-                    <div className="text-[10px] text-slate-500 font-bold">{prop.desc}</div>
-                  </div>
-                </motion.div>
-              ))}
             </div>
           </motion.div>
 
