@@ -43,6 +43,10 @@ export const Navbar = () => {
                 >
                     <Logo />
                 </div>
+                <span className="hidden md:inline-flex items-center gap-1.5 px-3 py-1 bg-violet-50 text-violet-700 border border-violet-100 rounded-full text-[11px] font-black uppercase tracking-widest">
+                    <span className="w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse" />
+                    Free Forever
+                </span>
                 <div className="flex items-center gap-8">
                     {!loading && (
                         user ? (
