@@ -101,8 +101,9 @@ export function generateStaticParams() {
   return Object.keys(ROLES).map((slug) => ({ role: slug }));
 }
 
-export function generateMetadata({ params }: { params: { role: string } }): Metadata {
-  const config = ROLES[params.role];
+export async function generateMetadata({ params }: { params: Promise<{ role: string }> }): Promise<Metadata> {
+  const { role } = await params;
+  const config = ROLES[role];
   if (!config) return {};
   return {
     title: config.title,
@@ -118,8 +119,9 @@ export function generateMetadata({ params }: { params: { role: string } }): Meta
   };
 }
 
-export default function RoleTemplatePage({ params }: { params: { role: string } }) {
-  const config = ROLES[params.role];
+export default async function RoleTemplatePage({ params }: { params: Promise<{ role: string }> }) {
+  const { role } = await params;
+  const config = ROLES[role];
   if (!config) notFound();
 
   return (
