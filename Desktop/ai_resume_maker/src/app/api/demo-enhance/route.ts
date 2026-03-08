@@ -8,6 +8,7 @@ function isIpLimited(ip: string): boolean {
     const now = Date.now();
     const entry = ipMap.get(ip);
     if (!entry || now > entry.resetAt) {
+        if (entry) ipMap.delete(ip); // evict stale entry to prevent memory leak
         ipMap.set(ip, { count: 1, resetAt: now + 60000 });
         return false;
     }
@@ -17,7 +18,9 @@ function isIpLimited(ip: string): boolean {
 }
 
 export async function POST(req: NextRequest) {
-    const ip = req.headers.get("x-forwarded-for")?.split(",")[0] ?? "unknown";
+    // x-forwarded-for is set by Cloudflare/Nginx in production — first entry is the real client IP.
+    // In dev without a proxy, falls back to "unknown" (shared bucket, acceptable for demo).
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
     if (isIpLimited(ip)) {
         return NextResponse.json({ error: "Rate limit exceeded. Try again in a minute." }, { status: 429 });
     }
