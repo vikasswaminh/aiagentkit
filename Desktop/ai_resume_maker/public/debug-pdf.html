@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PDF Debug Tool</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            padding: 20px; 
+            background: #f5f5f5;
+        }
+        .container { 
+            max-width: 1200px; 
+            margin: 0 auto; 
+            background: white; 
+            padding: 20px; 
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section { 
+            margin: 20px 0; 
+            padding: 15px; 
+            border: 1px solid #ddd; 
+            border-radius: 5px;
+            background: #fafafa;
+        }
+        .success { 
+            background-color: #d4edda; 
+            border-color: #c3e6cb; 
+            color: #155724; 
+        }
+        .error { 
+            background-color: #f8d7da; 
+            border-color: #f5c6cb; 
+            color: #721c24; 
+        }
+        .debug-info { 
+            background: #f8f9fa; 
+            border: 1px solid #dee2e6; 
+            padding: 15px; 
+            margin: 10px 0; 
+            border-radius: 5px; 
+        }
+        .preview-container {
+            border: 2px solid #007bff;
+            margin: 20px 0;
+            padding: 10px;
+            background: white;
+            min-height: 400px;
+        }
+        iframe {
+            width: 100%;
+            height: 600px;
+            border: 1px solid #ccc;
+            background: white;
+        }
+        textarea {
+            width: 100%;
+            height: 200px;
+            font-family: monospace;
+            font-size: 11px;
+            border: 1px solid #ccc;
+            padding: 10px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+        }
+        .tab {
+            padding: 10px 20px;
+            background: #e9ecef;
+            border: 1px solid #dee2e6;
+            border-bottom: none;
+            cursor: pointer;
+            margin-right: 5px;
+        }
+        .tab.active {
+            background: white;
+            border-color: #dee2e6;
+        }
+        .tab-content {
+            display: none;
+            border: 1px solid #dee2e6;
+            padding: 20px;
+            background: white;
+        }
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 PDF Generation Debug Tool</h1>
+        <p>This tool helps debug the PDF generation process by showing the generated HTML and PDF output.</p>
+        
+        <div class="tabs">
+            <div class="tab active" onclick="showTab('html')">Generated HTML</div>
+            <div class="tab" onclick="showTab('pdf')">PDF Preview</div>
+            <div class="tab" onclick="showTab('raw')">Raw HTML Code</div>
+        </div>
+
+        <div id="html-tab" class="tab-content active">
+            <h2>Generated HTML Preview</h2>
+            <p>This shows how the HTML will look when rendered:</p>
+            <button onclick="generateAndPreviewHTML()">Generate HTML Preview</button>
+            <div id="html-preview" class="preview-container">
+                <p>Click the button above to generate and preview the HTML.</p>
+            </div>
+        </div>
+
+        <div id="pdf-tab" class="tab-content">
+            <h2>PDF Generation Test</h2>
+            <p>This generates an actual PDF using api2pdf:</p>
+            <button onclick="testPdfGeneration()">Generate PDF</button>
+            <div id="pdf-result"></div>
+        </div>
+
+        <div id="raw-tab" class="tab-content">
+            <h2>Raw HTML Code</h2>
+            <p>This shows the raw HTML code that will be sent to the PDF generator:</p>
+            <button onclick="showRawHTML()">Show Raw HTML</button>
+            <div id="raw-html-result"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>Sample Resume Data</h3>
+            <textarea id="sample-data" style="height: 150px;"></textarea>
+            <button onclick="updateSampleData()">Update Sample Data</button>
+        </div>
+    </div>
+
+    <script>
+        // Sample resume data for testing
+        const sampleData = {
+            template: "modern",
+            header: {
+                name: "John Doe",
+                location: "New York, NY",
+                phone: "(555) 123-4567",
+                email: "john.doe@email.com",
+                linkedin: "https://linkedin.com/in/johndoe",
+                github: "https://github.com/johndoe"
+            },
+            experience: [
+                {
+                    role: "Software Engineer",
+                    organization: "Tech Company",
+                    duration: "2020 - Present",
+                    bullets: [
+                        "Developed web applications using React and Node.js",
+                        "Led team of 5 developers on major project",
+                        "Improved application performance by 40%"
+                    ]
+                }
+            ],
+            education: [
+                {
+                    degree: "Bachelor of Science in Computer Science",
+                    institution: "University Name",
+                    duration: "2016 - 2020",
+                    gpa: "3.8"
+                }
+            ],
+            skills: {
+                categories: [
+                    {
+                        category: "Frontend",
+                        skills: "JavaScript, React, Node.js"
+                    },
+                    {
+                        category: "Backend",
+                        skills: "Python, SQL, Express.js"
+                    }
+                ]
+            },
+            projects: [
+                {
+                    name: "E-commerce Platform",
+                    techStack: "React, Node.js, MongoDB",
+                    link: "https://github.com/johndoe/ecommerce",
+                    bullets: [
+                        "Built full-stack e-commerce application",
+                        "Implemented payment processing with Stripe",
+                        "Deployed on AWS with 99.9% uptime"
+                    ]
+                }
+            ],
+            achievements: [
+                "Dean's List for 4 consecutive semesters",
+                "Winner of University Hackathon 2019"
+            ],
+            certifications: [
+                "AWS Certified Developer",
+                "Google Cloud Professional"
+            ]
+        };
+
+        // Initialize sample data
+        document.getElementById('sample-data').value = JSON.stringify(sampleData, null, 2);
+
+        function showTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Show selected tab
+            document.getElementById(tabName + '-tab').classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        function updateSampleData() {
+            try {
+                const newData = JSON.parse(document.getElementById('sample-data').value);
+                Object.assign(sampleData, newData);
+                alert('Sample data updated successfully!');
+            } catch (error) {
+                alert('Invalid JSON format: ' + error.message);
+            }
+        }
+
+        async function generateAndPreviewHTML() {
+            const previewDiv = document.getElementById('html-preview');
+            previewDiv.innerHTML = '<p>Generating HTML preview...</p>';
+            
+            try {
+                const response = await fetch('/api/debug-html', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(sampleData),
+                    credentials: 'include',
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    
+                    // Create iframe to show the HTML
+                    const iframe = document.createElement('iframe');
+                    iframe.srcdoc = result.html;
+                    
+                    previewDiv.innerHTML = '<div class="success">✓ HTML generated successfully! Length: ' + result.htmlLength + ' characters</div>';
+                    previewDiv.appendChild(iframe);
+                } else {
+                    const errorData = await response.json();
+                    previewDiv.innerHTML = `<div class="error">✗ HTML generation failed: ${errorData.error}</div>`;
+                }
+            } catch (error) {
+                previewDiv.innerHTML = `<div class="error">✗ Error: ${error.message}</div>`;
+            }
+        }
+
+        async function showRawHTML() {
+            const resultDiv = document.getElementById('raw-html-result');
+            resultDiv.innerHTML = '<p>Fetching raw HTML...</p>';
+            
+            try {
+                const response = await fetch('/api/debug-html', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(sampleData),
+                    credentials: 'include',
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    
+                    resultDiv.innerHTML = '<div class="success">✓ Raw HTML retrieved successfully!</div>';
+                    
+                    const textarea = document.createElement('textarea');
+                    textarea.value = result.html;
+                    textarea.readOnly = true;
+                    resultDiv.appendChild(textarea);
+                } else {
+                    const errorData = await response.json();
+                    resultDiv.innerHTML = `<div class="error">✗ Failed to get HTML: ${errorData.error}</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">✗ Error: ${error.message}</div>`;
+            }
+        }
+
+        async function testPdfGeneration() {
+            const resultDiv = document.getElementById('pdf-result');
+            resultDiv.innerHTML = '<p>Generating PDF...</p>';
+            
+            try {
+                const response = await fetch('/api/export', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(sampleData),
+                    credentials: 'include',
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    
+                    // Create download link
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'test_resume.pdf';
+                    a.textContent = 'Download Test PDF';
+                    a.style.display = 'block';
+                    a.style.marginTop = '10px';
+                    
+                    // Create preview
+                    const iframe = document.createElement('iframe');
+                    iframe.src = url;
+                    iframe.style.width = '100%';
+                    iframe.style.height = '500px';
+                    iframe.style.marginTop = '10px';
+                    
+                    resultDiv.innerHTML = '<div class="success">✓ PDF generated successfully!</div>';
+                    resultDiv.appendChild(a);
+                    resultDiv.appendChild(iframe);
+                    
+                    // Clean up
+                    setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+                } else {
+                    const errorData = await response.json();
+                    resultDiv.innerHTML = `<div class="error">✗ PDF generation failed: ${errorData.error}</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">✗ Error: ${error.message}</div>`;
+            }
+        }
+    </script>
+</body>
+</html>

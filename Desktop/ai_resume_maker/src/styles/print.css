@@ -1,0 +1,1630 @@
+/* 
+  Authoritative Print Stylesheet for AI Resume Builder
+  Targets: Preview (on-screen simulation) and api2pdf (PDF generation)
+*/
+
+:root {
+    --resume-width: 210mm;
+    --resume-height: 297mm;
+
+    /* Semantic Colors from globals.css */
+    --primary: #00A3FF;
+    --primary-dark: #0081cc;
+    --primary-light: #33b5ff;
+    --accent: #00D084;
+    --accent-dark: #00a66a;
+    --accent-light: #33d99d;
+    --destructive: #ff4d4d;
+    --destructive-dark: #cc0000;
+
+    /* Neutral Palette */
+    --neutral-50: #f8fafc;
+    --neutral-100: #f1f5f9;
+    --neutral-200: #e2e8f0;
+    --neutral-300: #cbd5e1;
+    --neutral-400: #94a3b8;
+    --neutral-500: #64748b;
+    --neutral-600: #475569;
+    --neutral-700: #3341155;
+    --neutral-800: #1e293b;
+    --neutral-900: #0f172a;
+
+    --background: #ffffff;
+    --foreground: #2d3748;
+}
+
+@page {
+    size: A4;
+    margin: 0;
+}
+
+/* 1. Global Reset - Scoped to .resume-container to prevent pollution */
+.resume-container,
+.resume-container * {
+    box-sizing: border-box !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+}
+
+/* 2. Base Container Style (Acts as the 'body' for the resume) */
+.resume-container {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    font-size: 16px !important;
+    /* Lock rem basis */
+    color: var(--foreground) !important;
+    font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+}
+
+.font-sans {
+    font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+}
+
+.resume-container p,
+.resume-container h1,
+.resume-container h2,
+.resume-container h3,
+.resume-container h4,
+.resume-container h5,
+.resume-container h6,
+.resume-container ul,
+.resume-container ol,
+.resume-container li,
+.resume-container dl,
+.resume-container blockquote,
+.resume-container figure {
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+.resume-container a {
+    color: inherit !important;
+    text-decoration: none !important;
+    display: inline-block !important;
+    /* Isolate from flex gap leakage */
+    line-height: inherit !important;
+}
+
+.underline {
+    text-decoration: none !important;
+    border-bottom: 1px solid currentColor !important;
+}
+
+.underline-offset-4 {
+    border-bottom-width: 1px !important;
+    padding-bottom: 2px !important;
+}
+
+.decoration-slate-200 {
+    border-color: #e2e8f0 !important;
+}
+
+.decoration-primary\/20 {
+    border-color: rgba(0, 163, 255, 0.2) !important;
+}
+
+/* Base Reset for Resume Content */
+.resume-container {
+    width: var(--resume-width) !important;
+    height: var(--resume-height) !important;
+    background: white !important;
+    box-sizing: border-box !important;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    margin: 0 auto;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-before: avoid !important;
+    page-break-after: avoid !important;
+    zoom: 0.98 !important;
+}
+
+.resume-container .static {
+    position: static !important;
+}
+
+.resume-container .relative {
+    position: relative !important;
+}
+
+.resume-container .absolute {
+    position: absolute !important;
+}
+
+/* Font Standardization */
+.resume-container .font-sans,
+.resume-container .font-inter {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+}
+
+.resume-container .font-serif,
+.resume-container .font-merriweather {
+    font-family: 'Merriweather', Georgia, serif !important;
+}
+
+.resume-container .font-mono {
+    font-family: 'JetBrains Mono', 'Courier New', monospace !important;
+}
+
+/* Utilities for Templates (High Precision Shims) */
+.resume-container .flex {
+    display: flex !important;
+}
+
+.resume-container .flex-col {
+    flex-direction: column !important;
+}
+
+.resume-container .flex-1 {
+    flex: 1 1 0% !important;
+}
+
+.resume-container .flex-wrap {
+    flex-wrap: wrap !important;
+}
+
+.resume-container .flex-row {
+    flex-direction: row !important;
+}
+
+.resume-container .items-center {
+    align-items: center !important;
+}
+
+.resume-container .items-baseline {
+    align-items: baseline !important;
+}
+
+.resume-container .items-start {
+    align-items: flex-start !important;
+}
+
+.resume-container .items-end {
+    align-items: flex-end !important;
+}
+
+.resume-container .justify-center {
+    justify-content: center !important;
+}
+
+.resume-container .justify-between {
+    justify-content: space-between !important;
+}
+
+.resume-container .justify-end {
+    justify-content: flex-end !important;
+}
+
+.resume-container .grid {
+    display: grid !important;
+}
+
+.resume-container .grid-cols-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+.resume-container .grid-cols-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+
+.resume-container .grid-cols-12 {
+    grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
+}
+
+.resume-container .col-span-4 {
+    grid-column: span 4 / span 4 !important;
+}
+
+.resume-container .col-span-8 {
+    grid-column: span 8 / span 8 !important;
+}
+
+.resume-container .col-span-12 {
+    grid-column: span 12 / span 12 !important;
+}
+
+.resume-container .w-full {
+    width: 100% !important;
+}
+
+.resume-container .w-1\/2 {
+    width: 50% !important;
+}
+
+.resume-container .w-1\/3 {
+    width: 33.333333% !important;
+}
+
+.resume-container .w-2\/3 {
+    width: 66.666667% !important;
+}
+
+.resume-container .w-\[30\%\] {
+    width: 30% !important;
+}
+
+.resume-container .w-\[32\%\] {
+    width: 32% !important;
+}
+
+.resume-container .w-\[65\%\] {
+    width: 65% !important;
+}
+
+.resume-container .w-\[68\%\] {
+    width: 68% !important;
+}
+
+.resume-container .w-\[72\%\] {
+    width: 72% !important;
+}
+
+.resume-container .w-\[70\%\] {
+    width: 70% !important;
+}
+
+.resume-container .w-\[26\%\] {
+    width: 26% !important;
+}
+
+.resume-container .w-\[24\%\] {
+    width: 24% !important;
+}
+
+.resume-container .w-12 {
+    width: 3rem !important;
+}
+
+.resume-container .max-w-2xl {
+    max-width: 42rem !important;
+}
+
+.resume-container .max-w-3xl {
+    max-width: 48rem !important;
+}
+
+.resume-container .gap-x-1\.5 {
+    column-gap: 0.375rem !important;
+}
+
+.resume-container .gap-y-1 {
+    row-gap: 0.25rem !important;
+}
+
+.resume-container .gap-3 {
+    gap: 0.75rem !important;
+}
+
+.resume-container .gap-1\.5 {
+    gap: 0.375rem !important;
+}
+
+.resume-container .gap-2 {
+    gap: 0.5rem !important;
+}
+
+.resume-container .gap-x-4 {
+    column-gap: 1rem !important;
+}
+
+.resume-container .gap-y-1 {
+    row-gap: 0.25rem !important;
+}
+
+.resume-container .gap-y-2\.5 {
+    row-gap: 0.625rem !important;
+}
+
+.resume-container .gap-3 {
+    gap: 0.75rem !important;
+}
+
+.resume-container .gap-4 {
+    gap: 1rem !important;
+}
+
+.resume-container .gap-6 {
+    gap: 1.5rem !important;
+}
+
+.resume-container .gap-8 {
+    gap: 2rem !important;
+}
+
+.resume-container .gap-10 {
+    gap: 2.5rem !important;
+}
+
+.resume-container .gap-12 {
+    gap: 3rem !important;
+}
+
+.resume-container .gap-x-4 {
+    column-gap: 1rem !important;
+}
+
+.resume-container .gap-x-8 {
+    column-gap: 2rem !important;
+}
+
+.resume-container .gap-y-0\.5 {
+    row-gap: 0.125rem !important;
+}
+
+.resume-container .gap-x-6 {
+    column-gap: 1.5rem !important;
+}
+
+.resume-container .gap-x-12 {
+    column-gap: 3rem !important;
+}
+
+.resume-container .gap-y-1 {
+    row-gap: 0.25rem !important;
+}
+
+.resume-container .gap-y-2 {
+    row-gap: 0.5rem !important;
+}
+
+.resume-container .gap-y-4 {
+    row-gap: 1rem !important;
+}
+
+.resume-container .space-y-1>*+* {
+    margin-top: 0.25rem !important;
+}
+
+.resume-container .space-y-1\.5>*+* {
+    margin-top: 0.375rem !important;
+}
+
+.resume-container .space-y-0\.5>*+* {
+    margin-top: 0.25rem !important;
+    /* Increased from 0.125rem */
+}
+
+.resume-container .space-y-1>*+* {
+    margin-top: 0.25rem !important;
+}
+
+.resume-container .space-y-1\.5>*+* {
+    margin-top: 0.375rem !important;
+}
+
+.resume-container .space-y-2>*+* {
+    margin-top: 0.5rem !important;
+}
+
+.resume-container .space-y-2\.5>*+* {
+    margin-top: 0.625rem !important;
+}
+
+.resume-container .space-y-3>*+* {
+    margin-top: 0.75rem !important;
+}
+
+.resume-container .space-y-4>*+* {
+    margin-top: 1rem !important;
+}
+
+.resume-container .space-y-5>*+* {
+    margin-top: 1.25rem !important;
+}
+
+.resume-container .space-y-6>*+* {
+    margin-top: 1.5rem !important;
+}
+
+.resume-container .space-y-7>*+* {
+    margin-top: 1.75rem !important;
+}
+
+.resume-container .space-y-10>*+* {
+    margin-top: 1.5rem !important;
+}
+
+/* Typography */
+.resume-container .text-\[8pt\] {
+    font-size: 8pt !important;
+}
+
+.resume-container .text-\[8\.5pt\] {
+    font-size: 8.5pt !important;
+}
+
+.resume-container .text-\[7\.5pt\] {
+    font-size: 7.5pt !important;
+}
+
+.resume-container .text-\[5pt\] {
+    font-size: 5pt !important;
+}
+
+.resume-container .text-\[9pt\] {
+    font-size: 9pt !important;
+}
+
+.resume-container .text-\[9\.5pt\] {
+    font-size: 9.5pt !important;
+}
+
+.resume-container .text-\[10pt\] {
+    font-size: 10pt !important;
+}
+
+.resume-container .text-\[10\.5pt\] {
+    font-size: 10.5pt !important;
+}
+
+.resume-container .text-\[11pt\] {
+    font-size: 11pt !important;
+}
+
+.resume-container .text-\[11\.5pt\] {
+    font-size: 11.5pt !important;
+}
+
+.resume-container .text-\[12pt\] {
+    font-size: 12pt !important;
+}
+
+.resume-container .text-\[12\.5pt\] {
+    font-size: 12.5pt !important;
+}
+
+.resume-container .text-xs {
+    font-size: 0.75rem !important;
+}
+
+.resume-container .text-sm {
+    font-size: 0.875rem !important;
+}
+
+.resume-container .text-\[7pt\] {
+    font-size: 7pt !important;
+}
+
+.resume-container .text-base {
+    font-size: 1rem !important;
+}
+
+.resume-container .text-lg {
+    font-size: 1.125rem !important;
+}
+
+.resume-container .text-xl {
+    font-size: 1.25rem !important;
+}
+
+.resume-container .text-2xl {
+    font-size: 1.5rem !important;
+}
+
+.resume-container .text-3xl {
+    font-size: 1.875rem !important;
+}
+
+.resume-container .text-4xl {
+    font-size: 2.25rem !important;
+}
+
+.resume-container .font-light {
+    font-weight: 300 !important;
+}
+
+.resume-container .font-normal {
+    font-weight: 400 !important;
+}
+
+.resume-container .font-medium {
+    font-weight: 500 !important;
+}
+
+.resume-container .font-semibold {
+    font-weight: 600 !important;
+}
+
+.resume-container .font-bold {
+    font-weight: 700 !important;
+}
+
+.resume-container .font-black {
+    font-weight: 900 !important;
+}
+
+.resume-container .font-extrabold {
+    font-weight: 800 !important;
+}
+
+.resume-container .italic {
+    font-style: italic !important;
+}
+
+.resume-container .uppercase {
+    text-transform: uppercase !important;
+}
+
+.resume-container .text-center {
+    text-align: center !important;
+}
+
+.resume-container .text-right {
+    text-align: right !important;
+}
+
+.resume-container .text-justify {
+    text-align: justify !important;
+}
+
+.resume-container .mx-auto {
+    margin-left: auto !important;
+    margin-right: auto !important;
+}
+
+.resume-container .underline {
+    text-decoration: underline !important;
+}
+
+.resume-container .decoration-slate-200 {
+    text-decoration-color: #e2e8f0 !important;
+}
+
+.resume-container .underline-offset-4 {
+    text-underline-offset: 4px !important;
+}
+
+.resume-container .decoration-primary\/20 {
+    text-decoration-color: rgba(0, 163, 255, 0.2) !important;
+}
+
+.resume-container .tracking-tighter {
+    letter-spacing: -0.05em !important;
+}
+
+.resume-container .tracking-tight {
+    letter-spacing: -0.025em !important;
+}
+
+.resume-container .tracking-normal {
+    letter-spacing: 0em !important;
+}
+
+.resume-container .tracking-wide {
+    letter-spacing: 0.025em !important;
+}
+
+.resume-container .tracking-wider {
+    letter-spacing: 0.05em !important;
+}
+
+.resume-container .tracking-widest {
+    letter-spacing: 0.1em !important;
+}
+
+.resume-container .tracking-\[0\.1em\] {
+    letter-spacing: 0.1em !important;
+}
+
+.resume-container .tracking-\[0\.15em\] {
+    letter-spacing: 0.15em !important;
+}
+
+.resume-container .tracking-\[0\.2em\] {
+    letter-spacing: 0.2em !important;
+}
+
+/* Global Bullet Suppression for non-list elements */
+.resume-container div,
+.resume-container p,
+.resume-container span,
+.resume-container section,
+.resume-container h1,
+.resume-container h2,
+.resume-container h3 {
+    list-style: none !important;
+    list-style-type: none !important;
+    background-image: none !important;
+}
+
+.resume-container div::before,
+.resume-container p::before,
+.resume-container span::before,
+.resume-container section::before,
+.resume-container li.list-none::before {
+    content: none !important;
+}
+
+.resume-container .text-\[10px\] {
+    font-size: 10px !important;
+}
+
+.resume-container .text-\[9px\] {
+    font-size: 9px !important;
+}
+
+.resume-container .gap-x-3 {
+    column-gap: 0.75rem !important;
+}
+
+.resume-container .px-6 {
+    padding-left: 1.5rem !important;
+    padding-right: 1.5rem !important;
+}
+
+.resume-container .px-10 {
+    padding-left: 2.5rem !important;
+    padding-right: 2.5rem !important;
+}
+
+.resume-container .px-16 {
+    padding-left: 4rem !important;
+    padding-right: 4rem !important;
+}
+
+.resume-container .px-24 {
+    padding-left: 6rem !important;
+    padding-right: 6rem !important;
+}
+
+.resume-container .px-8 {
+    padding-left: 2rem !important;
+    padding-right: 2rem !important;
+}
+
+.resume-container .px-1\.5 {
+    padding-left: 0.375rem !important;
+    padding-right: 0.375rem !important;
+}
+
+.resume-container .pl-10 {
+    padding-left: 2.5rem !important;
+}
+
+.resume-container .pr-10 {
+    padding-right: 2.5rem !important;
+}
+
+.resume-container .px-4 {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+}
+
+.resume-container .py-4 {
+    padding-top: 1rem !important;
+    padding-bottom: 1rem !important;
+}
+
+.resume-container .py-12 {
+    padding-top: 3rem !important;
+    padding-bottom: 3rem !important;
+}
+
+.resume-container .py-16 {
+    padding-top: 4rem !important;
+    padding-bottom: 4rem !important;
+}
+
+.resume-container .py-6 {
+    padding-top: 1.5rem !important;
+    padding-bottom: 1.5rem !important;
+}
+
+.resume-container .py-1\.5 {
+    padding-top: 0.375rem !important;
+    padding-bottom: 0.375rem !important;
+}
+
+.resume-container .pl-3 {
+    padding-left: 0.75rem !important;
+}
+
+.resume-container .mt-1 {
+    margin-top: 0.25rem !important;
+}
+
+.resume-container .mt-2 {
+    margin-top: 0.5rem !important;
+}
+
+.resume-container .mt-1\.5 {
+    margin-top: 0.375rem !important;
+}
+
+.resume-container .tracking-\[0\.25em\] {
+    letter-spacing: 0.25em !important;
+}
+
+.resume-container .tracking-\[0\.3em\] {
+    letter-spacing: 0.3em !important;
+}
+
+.resume-container .tracking-\[0\.4em\] {
+    letter-spacing: 0.4em !important;
+}
+
+.resume-container .pt-6 {
+    padding-top: 1.5rem !important;
+}
+
+.resume-container .pt-10 {
+    padding-top: 2.5rem !important;
+}
+
+.resume-container .pt-12 {
+    padding-top: 3rem !important;
+}
+
+.resume-container .pb-6 {
+    padding-bottom: 1.5rem !important;
+}
+
+.resume-container .pb-10 {
+    padding-bottom: 2.5rem !important;
+}
+
+.resume-container .mt-6 {
+    margin-top: 1.5rem !important;
+}
+
+.resume-container .mb-2 {
+    margin-bottom: 0.5rem !important;
+}
+
+.resume-container .mb-4 {
+    margin-bottom: 1rem !important;
+}
+
+.resume-container .pb-1 {
+    padding-bottom: 0.25rem !important;
+}
+
+.resume-container .pb-3 {
+    padding-bottom: 0.75rem !important;
+}
+
+.resume-container .pb-2 {
+    padding-bottom: 0.5rem !important;
+}
+
+.resume-container .py-0\.5 {
+    padding-top: 0.125rem !important;
+    padding-bottom: 0.125rem !important;
+}
+
+.resume-container .border-b-2 {
+    border-bottom-width: 2px !important;
+}
+
+.resume-container .border-slate-900 {
+    border-color: #0f172a !important;
+}
+
+.resume-container .leading-none {
+    line-height: 1.1 !important;
+    /* Increased from 1.0 for better PDF legibility */
+}
+
+.resume-container .shrink-0 {
+    flex-shrink: 0 !important;
+}
+
+.resume-container .leading-tight {
+    line-height: 1.4 !important;
+    /* Increased from 1.25 for more breathing room */
+}
+
+.resume-container .leading-snug {
+    line-height: 1.375 !important;
+}
+
+.resume-container .leading-normal {
+    line-height: 1.5 !important;
+}
+
+.resume-container .leading-relaxed {
+    line-height: 1.625 !important;
+}
+
+.resume-container .leading-\[1\.3\] {
+    line-height: 1.3 !important;
+}
+
+.resume-container .leading-\[1\.2\] {
+    line-height: 1.2 !important;
+}
+
+.resume-container .whitespace-nowrap {
+    white-space: nowrap !important;
+}
+
+/* Colors */
+.resume-container .text-primary {
+    color: var(--primary) !important;
+}
+
+.resume-container .text-accent {
+    color: var(--accent) !important;
+}
+
+.resume-container .text-primary\/70 {
+    color: rgba(0, 163, 255, 0.7) !important;
+}
+
+.resume-container .text-primary\/80 {
+    color: rgba(0, 163, 255, 0.8) !important;
+}
+
+.resume-container .text-slate-900 {
+    color: #0f172a !important;
+}
+
+.resume-container .text-slate-800 {
+    color: #1e293b !important;
+}
+
+.resume-container .text-slate-600 {
+    color: #475569 !important;
+}
+
+.resume-container .text-slate-700 {
+    color: #334155 !important;
+}
+
+.resume-container .text-slate-500 {
+    color: #64748b !important;
+}
+
+.resume-container .text-slate-300 {
+    color: #cbd5e1 !important;
+}
+
+.resume-container .text-slate-200 {
+    color: #e2e8f0 !important;
+}
+
+.resume-container .text-slate-400 {
+    color: #94a3b8 !important;
+}
+
+.resume-container .bg-slate-50 {
+    background-color: #f8fafc !important;
+}
+
+.resume-container .bg-slate-100 {
+    background-color: #f1f5f9 !important;
+}
+
+.resume-container .border-slate-100 {
+    border-color: #f1f5f9 !important;
+}
+
+.resume-container .border-slate-200 {
+    border-color: #e2e8f0 !important;
+}
+
+/* Emerald Palette */
+.resume-container .text-emerald-600 {
+    color: #059669 !important;
+}
+
+.resume-container .bg-emerald-900 {
+    background-color: #064e3b !important;
+}
+
+.resume-container .list-none {
+    list-style-type: none !important;
+}
+
+.resume-container .w-1 {
+    width: 0.25rem !important;
+}
+
+.resume-container .h-1 {
+    height: 0.25rem !important;
+}
+
+.resume-container .rounded-full {
+    border-radius: 9999px !important;
+}
+
+.resume-container .bg-slate-900 {
+    background-color: #0f172a !important;
+}
+
+.resume-container .bg-emerald-50\/50 {
+    background-color: rgba(236, 253, 245, 0.5) !important;
+}
+
+.resume-container .border-emerald-100 {
+    border-color: #d1fae5 !important;
+}
+
+/* Purple Palette */
+.resume-container .text-purple-600 {
+    color: #9333ea !important;
+}
+
+.resume-container .text-purple-900 {
+    color: #581c87 !important;
+}
+
+.resume-container .bg-purple-50\/50 {
+    background-color: rgba(250, 245, 255, 0.5) !important;
+}
+
+.resume-container .border-purple-100 {
+    border-color: #f3e8ff !important;
+}
+
+/* Amber Palette - Used by Modern Prime */
+.resume-container .text-amber-900 {
+    color: #78350f !important;
+}
+
+.resume-container .text-amber-600 {
+    color: #d97706 !important;
+}
+
+.resume-container .bg-amber-50\/50 {
+    background-color: rgba(255, 251, 235, 0.5) !important;
+}
+
+.resume-container .bg-amber-900 {
+    background-color: #78350f !important;
+}
+
+.resume-container .border-amber-100 {
+    border-color: #fef3c7 !important;
+}
+
+.resume-container .border-amber-50 {
+    border-color: #fffbeb !important;
+}
+
+/* Rose Palette - Used by Elite Executive */
+.resume-container .text-rose-900 {
+    color: #881337 !important;
+}
+
+.resume-container .text-rose-600 {
+    color: #e11d48 !important;
+}
+
+.resume-container .bg-rose-50\/50 {
+    background-color: rgba(255, 241, 242, 0.5) !important;
+}
+
+.resume-container .bg-rose-900 {
+    background-color: #881337 !important;
+}
+
+.resume-container .border-rose-100 {
+    border-color: #ffe4e6 !important;
+}
+
+/* Sky & Indigo Palettes */
+.resume-container .text-sky-600 {
+    color: #0284c7 !important;
+}
+
+.resume-container .text-indigo-600 {
+    color: #4f46e5 !important;
+}
+
+.resume-container .text-white {
+    color: #ffffff !important;
+}
+
+.resume-container .bg-white {
+    background-color: #ffffff !important;
+}
+
+.resume-container .bg-slate-900 {
+    background-color: #0f172a !important;
+}
+
+.resume-container .bg-slate-200 {
+    background-color: #e2e8f0 !important;
+}
+
+.resume-container .bg-slate-100 {
+    background-color: #f1f5f9 !important;
+}
+
+.resume-container .bg-slate-50 {
+    background-color: #f8fafc !important;
+}
+
+.resume-container .bg-primary\/5 {
+    background-color: rgba(0, 163, 255, 0.05) !important;
+}
+
+.resume-container .bg-primary\/10 {
+    background-color: rgba(0, 163, 255, 0.1) !important;
+}
+
+.resume-container .bg-primary\/20 {
+    background-color: rgba(0, 163, 255, 0.2) !important;
+}
+
+.resume-container .bg-slate-50\/50 {
+    background-color: rgba(248, 250, 252, 0.5) !important;
+}
+
+.resume-container .bg-primary\/40 {
+    background-color: rgba(0, 163, 255, 0.4) !important;
+}
+
+.resume-container .bg-primary\/10 {
+    background-color: rgba(0, 163, 255, 0.1) !important;
+}
+
+/* Borders */
+.resume-container .border {
+    border-width: 1px !important;
+    border-style: solid !important;
+}
+
+.resume-container .border-2 {
+    border-width: 2px !important;
+    border-style: solid !important;
+}
+
+.resume-container .border-b {
+    border-bottom-width: 1px !important;
+    border-bottom-style: solid !important;
+}
+
+.resume-container .border-b-2 {
+    border-bottom-width: 2px !important;
+    border-bottom-style: solid !important;
+}
+
+.resume-container .border-b-\[1\.5pt\] {
+    border-bottom-width: 1.5pt !important;
+    border-bottom-style: solid !important;
+}
+
+.resume-container .border-b-\[1pt\] {
+    border-bottom-width: 1pt !important;
+    border-bottom-style: solid !important;
+}
+
+.resume-container .border-l-4 {
+    border-left-width: 4px !important;
+    border-left-style: solid !important;
+}
+
+.resume-container .border-l-2 {
+    border-left-width: 2px !important;
+    border-left-style: solid !important;
+}
+
+.resume-container .rounded-sm {
+    border-radius: 0.125rem !important;
+}
+
+.border-slate-900 {
+    border-color: #0f172a !important;
+}
+
+.resume-container .border-slate-200 {
+    border-color: #e2e8f0 !important;
+}
+
+.resume-container .border-slate-100 {
+    border-color: #f1f5f9 !important;
+}
+
+.resume-container .border-primary\/20 {
+    border-color: rgba(0, 163, 255, 0.2) !important;
+}
+
+.resume-container .border-primary\/10 {
+    border-color: rgba(0, 163, 255, 0.1) !important;
+}
+
+.resume-container .border-slate-100\/60 {
+    border-color: rgba(241, 245, 249, 0.6) !important;
+}
+
+/* Spacing */
+/* Spacing */
+.resume-container .px-10 {
+    padding-left: 2.5rem !important;
+    padding-right: 2.5rem !important;
+}
+
+.resume-container .py-8 {
+    padding-top: 2rem !important;
+    padding-bottom: 2rem !important;
+}
+
+.resume-container .py-6 {
+    padding-top: 2rem !important;
+    /* Increased from 1.5rem */
+    padding-bottom: 2rem !important;
+}
+
+.resume-container .py-10 {
+    padding-top: 2.5rem !important;
+    padding-bottom: 2.5rem !important;
+}
+
+.resume-container .px-5 {
+    padding-left: 1.25rem !important;
+    padding-right: 1.25rem !important;
+}
+
+.resume-container .pt-8 {
+    padding-top: 2rem !important;
+}
+
+.resume-container .p-2 {
+    padding: 0.5rem !important;
+}
+
+.resume-container .px-\[15mm\] {
+    padding-left: 15mm !important;
+    padding-right: 15mm !important;
+}
+
+.resume-container .pb-0\.5 {
+    padding-bottom: 0.125rem !important;
+}
+
+.resume-container .pb-2 {
+    padding-bottom: 0.5rem !important;
+}
+
+.resume-container .pb-8 {
+    padding-bottom: 2rem !important;
+}
+
+.resume-container .mt-2 {
+    margin-top: 0.5rem !important;
+}
+
+.resume-container .mb-2 {
+    margin-bottom: 0.5rem !important;
+}
+
+.resume-container .mb-1 {
+    margin-bottom: 0.25rem !important;
+}
+
+.resume-container .mb-0\.5 {
+    margin-bottom: 0.125rem !important;
+}
+
+.resume-container .pl-4 {
+    padding-left: 1rem !important;
+}
+
+.resume-container .rounded-xl {
+    border-radius: 0.75rem !important;
+}
+
+.resume-container .pb-8 {
+    padding-bottom: 2rem !important;
+}
+
+.resume-container .pb-4 {
+    padding-bottom: 1rem !important;
+}
+
+.resume-container .pb-2 {
+    padding-bottom: 0.5rem !important;
+}
+
+.resume-container .pb-1 {
+    padding-bottom: 0.25rem !important;
+}
+
+.resume-container .pl-3 {
+    padding-left: 0.75rem !important;
+}
+
+.resume-container .pl-1 {
+    padding-left: 0.25rem !important;
+}
+
+.resume-container .mt-4 {
+    margin-top: 1rem !important;
+}
+
+.resume-container .mt-3 {
+    margin-top: 0.75rem !important;
+}
+
+.resume-container .mt-1\.5 {
+    margin-top: 0.375rem !important;
+}
+
+.resume-container .mt-1\.5 {
+    margin-top: 0.375rem !important;
+}
+
+.resume-container .mt-1 {
+    margin-top: 0.25rem !important;
+}
+
+.resume-container .mt-0\.5 {
+    margin-top: 0.125rem !important;
+}
+
+.resume-container .mb-6 {
+    margin-bottom: 1.5rem !important;
+}
+
+.resume-container .mb-4 {
+    margin-bottom: 1rem !important;
+}
+
+.resume-container .mb-3 {
+    margin-bottom: 0.75rem !important;
+}
+
+.resume-container .mb-2 {
+    margin-bottom: 0.5rem !important;
+}
+
+.resume-container .mb-1\.5 {
+    margin-bottom: 0.375rem !important;
+}
+
+.resume-container .mb-1 {
+    margin-bottom: 0.25rem !important;
+}
+
+.resume-container .mb-0\.5 {
+    margin-bottom: 0.125rem !important;
+}
+
+.resume-container .mx-2 {
+    margin-left: 0.5rem !important;
+    margin-right: 0.5rem !important;
+}
+
+.resume-container .my-2 {
+    margin-top: 0.5rem !important;
+    margin-bottom: 0.5rem !important;
+}
+
+.resume-container .mr-2 {
+    margin-right: 0.5rem !important;
+}
+
+.resume-container .ml-5 {
+    margin-left: 1.25rem !important;
+}
+
+.resume-container .ml-4 {
+    margin-left: 1rem !important;
+}
+
+.resume-container .ml-3 {
+    margin-left: 0.75rem !important;
+}
+
+.resume-container .ml-2 {
+    margin-left: 0.5rem !important;
+}
+
+.resume-container .h-px {
+    height: 1px !important;
+}
+
+/* Rounding */
+.resume-container .rounded-lg {
+    border-radius: 0.5rem !important;
+}
+
+.resume-container .rounded-xl {
+    border-radius: 0.75rem !important;
+}
+
+.resume-container .rounded-sm {
+    border-radius: 0.125rem !important;
+}
+
+.resume-container .rounded-\[1\.25rem\] {
+    border-radius: 1.25rem !important;
+}
+
+.resume-container .rounded-full {
+    border-radius: 9999px !important;
+}
+
+/* Alignment */
+.resume-container .text-center {
+    text-align: center !important;
+}
+
+.resume-container .text-right {
+    text-align: right !important;
+}
+
+/* Lists */
+.resume-container .list-disc {
+    list-style-type: disc !important;
+}
+
+.resume-container .list-outside {
+    list-style-position: outside !important;
+}
+
+.resume-container .list-none {
+    list-style-type: none !important;
+}
+
+/* Effects */
+.resume-container .shadow-none {
+    box-shadow: none !important;
+}
+
+.resume-container .shadow-xl {
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
+}
+
+.resume-container .ring-1 {
+    box-shadow: 0 0 0 1px var(--tw-ring-color, rgba(0, 0, 0, 0.05)) !important;
+}
+
+.resume-container .ring-slate-100 {
+    --tw-ring-color: #f1f5f9 !important;
+}
+
+.resume-container .blur-3xl {
+    filter: blur(64px) !important;
+}
+
+.resume-container .blur-2xl {
+    filter: blur(40px) !important;
+}
+
+.resume-container .opacity-40 {
+    opacity: 0.4 !important;
+}
+
+.resume-container .opacity-50 {
+    opacity: 0.5 !important;
+}
+
+.resume-container .opacity-30 {
+    opacity: 0.3 !important;
+}
+
+.resume-container .opacity-80 {
+    opacity: 0.8 !important;
+}
+
+.resume-container .opacity-90 {
+    opacity: 0.9 !important;
+}
+
+.resume-container .opacity-70 {
+    opacity: 0.7 !important;
+}
+
+/* Ornamentals */
+.resume-container .-mr-16 {
+    margin-right: -4rem !important;
+}
+
+.resume-container .-mt-16 {
+    margin-top: -4rem !important;
+}
+
+.resume-container .-ml-12 {
+    margin-left: -3rem !important;
+}
+
+.resume-container .-mb-12 {
+    margin-bottom: -3rem !important;
+}
+
+.resume-container .z-10 {
+    z-index: 10 !important;
+}
+
+.resume-container .w-48 {
+    width: 12rem !important;
+}
+
+.resume-container .h-48 {
+    height: 12rem !important;
+}
+
+.resume-container .w-24 {
+    width: 6rem !important;
+}
+
+.resume-container .h-24 {
+    height: 6rem !important;
+}
+
+.resume-container .w-1\.5 {
+    width: 0.375rem !important;
+}
+
+.resume-container .h-1\.5 {
+    height: 0.375rem !important;
+}
+
+.resume-container .h-1 {
+    height: 0.25rem !important;
+}
+
+.resume-container .w-1 {
+    width: 0.25rem !important;
+}
+
+.resume-container .h-\[2px\] {
+    height: 2px !important;
+}
+
+.resume-container .w-16 {
+    width: 4rem !important;
+}
+
+.resume-container .w-20 {
+    width: 5rem !important;
+}
+
+.resume-container .w-6 {
+    width: 1.5rem !important;
+}
+
+.resume-container .w-8 {
+    width: 2rem !important;
+}
+
+/* Marker */
+.resume-container .marker\:text-primary ::marker,
+.resume-container .marker\:text-primary::marker {
+    color: var(--primary) !important;
+}
+
+.resume-container .marker\:text-slate-400 ::marker,
+.resume-container .marker\:text-slate-400::marker {
+    color: #94a3b8 !important;
+}
+
+.resume-container .marker\:text-emerald-600 ::marker,
+.resume-container .marker\:text-emerald-600::marker {
+    color: #059669 !important;
+}
+
+.resume-container .marker\:text-purple-600 ::marker,
+.resume-container .marker\:text-purple-600::marker {
+    color: #9333ea !important;
+}
+
+.resume-container .marker\:text-amber-600 ::marker,
+.resume-container .marker\:text-amber-600::marker {
+    color: #d97706 !important;
+}
+
+.resume-container .marker\:text-rose-600 ::marker,
+.resume-container .marker\:text-rose-600::marker {
+    color: #e11d48 !important;
+}
+
+/* Text Colors - Opacity Shims for RGBA safety */
+.resume-container .text-primary\/10 {
+    color: rgba(0, 163, 255, 0.1) !important;
+}
+
+.resume-container .text-primary\/20 {
+    color: rgba(0, 163, 255, 0.2) !important;
+}
+
+.resume-container .text-primary\/30 {
+    color: rgba(0, 163, 255, 0.3) !important;
+}
+
+.resume-container .text-primary\/50 {
+    color: rgba(0, 163, 255, 0.5) !important;
+}
+
+.resume-container .text-primary\/70 {
+    color: rgba(0, 163, 255, 0.7) !important;
+}
+
+.resume-container .text-primary\/80 {
+    color: rgba(0, 163, 255, 0.8) !important;
+}
+
+.resume-container .text-primary\/90 {
+    color: rgba(0, 163, 255, 0.9) !important;
+}
+
+/* Snapshot Fixes */
+.resume-container * {
+    min-width: 0 !important;
+}
+
+.resume-container .list-none {
+    list-style: none !important;
+    list-style-type: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+/* sidebar-item needs absolute bullet suppression */
+.resume-container .sidebar-item {
+    display: block !important;
+    list-style: none !important;
+    list-style-type: none !important;
+    background-image: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+.resume-container .sidebar-item::marker,
+.resume-container .sidebar-item ::marker,
+.resume-container .sidebar-item::before,
+.resume-container .sidebar-item ::before {
+    display: none !important;
+    content: none !important;
+}
+
+.resume-container .tracking-\[0\.2em\] {
+    letter-spacing: 0.2em !important;
+}
+
+.resume-container .tracking-\[0\.25em\] {
+    letter-spacing: 0.25em !important;
+}
+
+.resume-container .tracking-\[0\.4em\] {
+    letter-spacing: 0.4em !important;
+}
+
+.resume-container .tracking-\[0\.15em\] {
+    letter-spacing: 0.15em !important;
+}
+
+.resume-container .mr-\[4\%\] {
+    margin-right: 4% !important;
+}
+
+.resume-container .pl-2 {
+    padding-left: 0.5rem !important;
+}
+
+.resume-container .mb-2\.5 {
+    margin-bottom: 0.625rem !important;
+}
+
+.resume-container .mb-1\.5 {
+    margin-bottom: 0.375rem !important;
+}
+
+.resume-container .px-12 {
+    padding-left: 3rem !important;
+    padding-right: 3rem !important;
+}
+
+.resume-container .pb-12 {
+    padding-bottom: 3rem !important;
+}
+
+.resume-container .pb-10 {
+    padding-bottom: 2.5rem !important;
+}
+
+.resume-container .mb-6 {
+    margin-bottom: 1.5rem !important;
+}
+
+.resume-container .p-10 {
+    padding: 2.5rem !important;
+}
